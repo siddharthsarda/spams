@@ -1,2 +1,3 @@
 *.pyc
 spams/config.py
+backup/
