@@ -26,3 +26,10 @@ def create_and_return_session(engine=None):
         engine = create_postgres_engine()
     Session = sessionmaker(bind=engine)
     return Session()
+
+
+def setup_database():
+    engine = create_postgres_engine()
+    metadata = get_metadata(engine)
+    connection = get_connection(engine)
+    return metadata, connection
