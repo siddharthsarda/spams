@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from sqlalchemy.sql import select
 
 from spams.db.utils import setup_database, get_table
@@ -12,16 +12,19 @@ from spams.location_inference.label_place_mapping import LABEL_PLACE_MAPPING
 def return_joined_table(tablename, metadata):
     visits = get_table(tablename, metadata)
     places = get_table("places", metadata)
-    return places.join(visits, onclause=and_(places.c.userid == visits.c.userid, places.c.placeid == visits.c.placeid)).alias("visits_joined")
+    demographics = get_table("demographics", metadata)
+    visits_with_places = places.join(visits, onclause=and_(places.c.userid == visits.c.userid, places.c.placeid == visits.c.placeid)).alias("visits_joined")
+    visits_with_places_and_demographics = visits_with_places.join(demographics, visits_with_places.c[tablename + "_userid"] == demographics.c.userid).alias("consolidated")
+    return visits_with_places_and_demographics
 
 
 def plot_start_time_hour():
     metadata, connection = setup_database()
     tables = ["visits_10min", "visits_20min"]
     for table in tables:
-        visits_with_places = return_joined_table(table, metadata)
+        consolidated = return_joined_table(table, metadata)
         for place_label in xrange(1, 11):
-            query = select([visits_with_places.c[table + "_time_start"]], visits_with_places.c.places_place_label == place_label)
+            query = select([consolidated.c["visits_joined_" + table + "_time_start"]], consolidated.c["visits_joined_places_place_label"] == place_label)
             start_times = connection.execute(query).fetchall()
             hours = [0 for i in xrange(24)]
             for start_time in start_times:
@@ -36,9 +39,9 @@ def plot_start_time_day():
     metadata, connection = setup_database()
     tables = ["visits_10min", "visits_20min"]
     for table in tables:
-        visits_with_places = return_joined_table(table, metadata)
+        consolidated = return_joined_table(table, metadata)
         for place_label in xrange(1, 11):
-            query = select([visits_with_places.c[table + "_time_start"]], visits_with_places.c.places_place_label == place_label)
+            query = select([consolidated.c["visits_joined_" + table + "_time_start"]], consolidated.c["visits_joined_places_place_label"] == place_label)
             start_times = connection.execute(query).fetchall()
             days = [0 for i in xrange(7)]
             for start_time in start_times:
@@ -49,5 +52,34 @@ def plot_start_time_day():
             draw_barplot(days, x_ticks=day_dict, xlabel="Day of week", ylabel="Number of Checkins", title="%s start times in days for table %s" % (place_name, table), save_as=os.path.join("/local", "thesis", "plots", filename))
 
 
+def plot_gender():
+    metadata, connection = setup_database()
+    tables = ["visits_10min", "visits_20min"]
+    for table in tables:
+        consolidated = return_joined_table(table, metadata)
+        print connection.execute(select([func.count()], consolidated.c["demographics_gender"] == 2)).fetchall()
+        gender_checkins = []
+        for gender in (0, 1):
+            gender_checkins.append([])
+            for place_label in xrange(1, 11):
+                query = select([func.count()], and_(consolidated.c["visits_joined_places_place_label"] == place_label, consolidated.c["demographics_gender"] == gender + 1))
+                result = connection.execute(query).fetchall()
+                gender_checkins[gender].append(result[0][0])
+        import matplotlib.pyplot as plt
+        from spams.utils import autolabel
+        fig, ax = plt.subplots()
+        width = 0.35
+        rects1 = ax.bar(xrange(1, 11), gender_checkins[0], width, color='r')
+        rects2 = ax.bar([i + width for i in xrange(1, 11)], gender_checkins[1], width, color='g')
+        ax.legend((rects1[0], rects2[0]), ('Men', 'Women'))
+        ax.set_ylabel("Count")
+        xticks_values = [LABEL_PLACE_MAPPING[i] for i in xrange(1, 11)]
+        ax.set_xticks([i + width for i in xrange(1, 11)])
+        ax.set_xticklabels(xticks_values)
+        autolabel(rects1, gender_checkins[0])
+        autolabel(rects2, gender_checkins[1])
+        plt.show()
+
+
 if __name__ == "__main__":
-    plot_start_time_day()
+    plot_gender()
