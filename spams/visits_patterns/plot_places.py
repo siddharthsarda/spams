@@ -3,10 +3,12 @@ from datetime import datetime
 
 from sqlalchemy import and_, func
 from sqlalchemy.sql import select
+import matplotlib.pyplot as plt
 
 from spams.db.utils import setup_database, get_table
 from spams.utils import draw_barplot
 from spams.location_inference.label_place_mapping import LABEL_PLACE_MAPPING
+from spams.utils import autolabel
 
 
 def return_joined_table(tablename, metadata):
@@ -65,8 +67,6 @@ def plot_gender():
                 query = select([func.count()], and_(consolidated.c["visits_joined_places_place_label"] == place_label, consolidated.c["demographics_gender"] == gender + 1))
                 result = connection.execute(query).fetchall()
                 gender_checkins[gender].append(result[0][0])
-        import matplotlib.pyplot as plt
-        from spams.utils import autolabel
         fig, ax = plt.subplots()
         width = 0.35
         rects1 = ax.bar(xrange(1, 11), gender_checkins[0], width, color='r')
@@ -81,5 +81,37 @@ def plot_gender():
         plt.show()
 
 
+AGE_MAPPINGS = {1: "<16", 2: "16-21", 3: "22-27", 4: "28-33", 5: "33-38", 6: "39-44", 7: "45-50", 8: ">50"}
+
+
+def plot_age_groups():
+    metadata, connection = setup_database()
+    tables = ["visits_10min", "visits_20min"]
+    for table in tables:
+        consolidated = return_joined_table(table, metadata)
+        age_checkins = []
+
+        for place_label in xrange(1, 11):
+            age_checkins = []
+            for age_group in xrange(1, 9):
+                query = select([func.count()], and_(consolidated.c["visits_joined_places_place_label"] == place_label, consolidated.c["demographics_age_group"] == age_group))
+                result = connection.execute(query).fetchall()
+                age_checkins.append(result[0][0])
+            fig, ax = plt.subplots()
+            rects = ax.bar(xrange(1, 9), age_checkins)
+            ax.set_ylabel("Count")
+            ax.set_xlabel("Age groups")
+            ax.set_title(LABEL_PLACE_MAPPING[place_label] + " across age groups for table: " + table)
+            xticks_values = [AGE_MAPPINGS[i] for i in xrange(1, 9)]
+            ax.set_xticks([i + 0.35 for i in xrange(1, 9)])
+            ax.set_xticklabels(xticks_values)
+            autolabel(rects, age_checkins)
+            place_name = LABEL_PLACE_MAPPING[place_label]
+            filename = place_name + "_" + table + "age.png"
+            fig.set_size_inches((15, 12))
+            fig.savefig(filename, dpi=100)
+            plt.close(fig)
+
+
 if __name__ == "__main__":
-    plot_gender()
+    plot_age_groups()
