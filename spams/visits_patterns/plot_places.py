@@ -81,7 +81,7 @@ def plot_gender():
         plt.show()
 
 
-AGE_MAPPINGS = {1: "<16", 2: "16-21", 3: "22-27", 4: "28-33", 5: "33-38", 6: "39-44", 7: "45-50", 8: ">50"}
+AGE_MAPPING = {1: "<16", 2: "16-21", 3: "22-27", 4: "28-33", 5: "33-38", 6: "39-44", 7: "45-50", 8: ">50"}
 
 
 def plot_age_groups():
@@ -102,7 +102,7 @@ def plot_age_groups():
             ax.set_ylabel("Count")
             ax.set_xlabel("Age groups")
             ax.set_title(LABEL_PLACE_MAPPING[place_label] + " across age groups for table: " + table)
-            xticks_values = [AGE_MAPPINGS[i] for i in xrange(1, 9)]
+            xticks_values = [AGE_MAPPING[i] for i in xrange(1, 9)]
             ax.set_xticks([i + 0.35 for i in xrange(1, 9)])
             ax.set_xticklabels(xticks_values)
             autolabel(rects, age_checkins)
@@ -112,6 +112,51 @@ def plot_age_groups():
             fig.savefig(filename, dpi=100)
             plt.close(fig)
 
+GENDER_MAPPING = {1: "male", 2: "female"}
+WORKING_MAPPING = {1: "Working Full time", 2: "Working Part time", 3: "Not Currently Working", 4: "Studying full time", 5: "Studying Part time", 6: "Housewife", 7: "Retired", 8: "Other"}
+BILL_MAPPING = {1: "myself", 2: "parents", 3: "spouse", 4: "employer", 5: "other"}
+
+
+def plot_demographics():
+    metadata, connection = setup_database()
+    demographics = get_table("demographics", metadata)
+
+    gender_query = select([demographics.c.gender, func.count(demographics.c.gender)]).group_by(demographics.c.gender)
+    result = connection.execute(gender_query).fetchall()
+    result = [r for r in result if r[0] is not None]
+    result = sorted(result, key=lambda x: x[0])
+    vals = [r[1] for r in result]
+    x_ticks = [GENDER_MAPPING[r[0]] for r in result]
+    filename = "gender.png"
+    draw_barplot(vals, x_ticks=x_ticks, xlabel="Gender", ylabel="Count", title="Gender Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
+
+    age_query = select([demographics.c.age_group, func.count(demographics.c.age_group)]).group_by(demographics.c.age_group)
+    result = connection.execute(age_query).fetchall()
+    result = [r for r in result if r[0] is not None]
+    result = sorted(result, key=lambda x: x[0])
+    vals = [r[1] for r in result]
+    x_ticks = [AGE_MAPPING[r[0]] for r in result]
+    filename = "age.png"
+    draw_barplot(vals, x_ticks=x_ticks, xlabel="Age", ylabel="Count", title="Age Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
+
+    working_query = select([demographics.c.working, func.count(demographics.c.working)]).group_by(demographics.c.working)
+    result = connection.execute(working_query).fetchall()
+    result = [r for r in result if r[0] is not None]
+    result = sorted(result, key=lambda x: x[0])
+    vals = [r[1] for r in result]
+    x_ticks = [WORKING_MAPPING[r[0]] for r in result]
+    filename = "working.png"
+    draw_barplot(vals, x_ticks=x_ticks, xlabel="Working", ylabel="Count", title="Working Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
+
+    bill_query = select([demographics.c.phone_bill, func.count(demographics.c.phone_bill)]).group_by(demographics.c.phone_bill)
+    result = connection.execute(bill_query).fetchall()
+    result = [r for r in result if r[0] is not None]
+    result = sorted(result, key=lambda x: x[0])
+    vals = [r[1] for r in result]
+    x_ticks = [BILL_MAPPING[r[0]] for r in result]
+    filename = "bill.png"
+    draw_barplot(vals, x_ticks=x_ticks, xlabel="Bill", ylabel="Count", title="Bill Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
+
 
 if __name__ == "__main__":
-    plot_age_groups()
+    plot_demographics()
