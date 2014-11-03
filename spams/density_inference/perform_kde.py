@@ -2,13 +2,16 @@ import sys
 import numpy as np
 import math
 from sklearn.neighbors import KernelDensity
-from sqlalchemy.sql import select
+from sqlalchemy.sql import select, and_
 from sqlalchemy import func
 from spams.db.utils import setup_database, get_table
 from mpl_toolkits.basemap import Basemap
 import matplotlib.pyplot as plt
 from spams.mappings import LABEL_PLACE_MAPPING
 from sklearn.grid_search import GridSearchCV
+
+
+metadata, connection = setup_database()
 
 def test_kde(test_set, estimators):
     accurate = 0.0
@@ -48,6 +51,12 @@ def extract_places(places_location, label_id):
     return connection.execute(lat_long_query).fetchall()
 
 
+def extract_visits(places_location, label_id):
+    visits_10min = get_table("visits_10min", metadata)
+    visits_with_places = places_location.join(visits_10min, onclause=and_(places_location.c.userid == visits_10min.c.userid, places_location.c.placeid == visits_10min.c.placeid)).alias("visits_with_places")
+    query = select([visits_with_places.c.places_location_latitude, visits_with_places.c.places_location_longitude]).where(visits_with_places.c.places_location_place_label_int == label_id)
+    return connection.execute(query).fetchall()
+
 def split_test_and_train(results):
     # Use 1 % of the data as test set
     result_len = len(results)
@@ -65,11 +74,7 @@ def split_test_and_train(results):
             training_set.append(val)
     return training_set, test_set 
 
-
-if __name__ == "__main__":
-    metadata, connection = setup_database()
-    places_location = get_table("places_location", metadata)
-    min_lat, max_lat, min_long, max_long = connection.execute(select([func.min(places_location.c.latitude), func.max(places_location.c.latitude), func.min(places_location.c.longitude), func.max(places_location.c.longitude)])).fetchall()[0]
+def perform_kde(places_location, input_func= extract_places):
     estimators = {}
     test_set_dict = {}
     training_set = []
@@ -81,10 +86,10 @@ if __name__ == "__main__":
         estimators[label] = train_kde(training_set)
     accuracy = test_kde(test_set_dict, estimators)
     print accuracy
-        
-                
 
 
+if __name__ == "__main__":
+    places_location = get_table("places_location", metadata)
+    min_lat, max_lat, min_long, max_long = connection.execute(select([func.min(places_location.c.latitude), func.max(places_location.c.latitude), func.min(places_location.c.longitude), func.max(places_location.c.longitude)])).fetchall()[0]
+    perform_kde(places_location, input_func=extract_visits)
 
-
-               
