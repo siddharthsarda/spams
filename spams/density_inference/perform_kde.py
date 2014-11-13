@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import math
+from collections import defaultdict
 from sklearn.neighbors import KernelDensity
 from sqlalchemy.sql import select, and_
 from sqlalchemy import func
@@ -16,24 +17,29 @@ metadata, connection = setup_database()
 def test_kde(test_set, estimators):
     accurate = 0.0
     counter = 0.0
+    nrr = 0.0
+    missed = {}
     # Test accuracy using just kde
     for label in test_set:
+        missed[label] = defaultdict(int)
         for value in test_set[label]:
             # Convert to radians
             value = [v * np.pi / 180. for v in value]
-            max_prob_density =  -sys.maxint - 1
             best_label = ""
             counter += 1
             ## Loop over all estimators to find one with the highest density
+            score_dict = {}
             for key in estimators:
-                score = estimators[key].score(value)
-                if score > max_prob_density:
-                    max_prob_density = score
-                    best_label = key
-            #print max_prob_density
-            if best_label == label:
+                score_dict[key] = estimators[key].score(value)
+            sorted_labels = [s[0] for s in sorted(score_dict.items(), key=lambda x: x[1], reverse=True)]
+            if sorted_labels[0] == label:
                 accurate +=1
-    return accurate/counter * 100
+            else:
+                missed[label][sorted_labels[0]] += 1
+
+            nrr += (1.0/(1 + sorted_labels.index(label)))    
+    accuracy = accurate/counter * 100
+    return accuracy, nrr/counter, missed
 
     
 def train_kde(training_set):    
@@ -60,6 +66,7 @@ def extract_visits(places_location, label_id):
 def split_test_and_train(results):
     # Use 1 % of the data as test set
     result_len = len(results)
+    # print result_len
     test_len = math.ceil(result_len * 0.1)
     xy = [(float(r[0]), float(r[1])) for r in results]
     test_indices = np.random.choice(result_len, test_len)
@@ -80,9 +87,9 @@ def perform_kde(places_location, input_func= extract_places):
     training_set = []
     for label_id in xrange(1, 11):
         label = LABEL_PLACE_MAPPING[label_id]
-        results = extract_places(places_location, label_id)
+        results = input_func(places_location, label_id)
         training_set, test_set = split_test_and_train(results)
-        test_set_dict[label] = test_set
+        test_set_dict[label] = list(set(test_set))
         estimators[label] = train_kde(training_set)
     accuracy = test_kde(test_set_dict, estimators)
     print accuracy
@@ -91,5 +98,7 @@ def perform_kde(places_location, input_func= extract_places):
 if __name__ == "__main__":
     places_location = get_table("places_location", metadata)
     min_lat, max_lat, min_long, max_long = connection.execute(select([func.min(places_location.c.latitude), func.max(places_location.c.latitude), func.min(places_location.c.longitude), func.max(places_location.c.longitude)])).fetchall()[0]
-    perform_kde(places_location, input_func=extract_visits)
+    # for i in xrange(1, 10):
+    perform_kde(places_location)
+    # perform_kde(places_location, input_func=extract_visits)
 
