@@ -95,10 +95,18 @@ def perform_kde(places_location, input_func= extract_places):
     print accuracy
 
 
+def perform_kde_visits(places_location):
+    perform_kde_visits(places_location, input_func=extract_visits)
+
+
+def perform_kde_places(places_location):
+    perform_kde_visits(places_location)
+
+
 if __name__ == "__main__":
     places_location = get_table("places_location", metadata)
     min_lat, max_lat, min_long, max_long = connection.execute(select([func.min(places_location.c.latitude), func.max(places_location.c.latitude), func.min(places_location.c.longitude), func.max(places_location.c.longitude)])).fetchall()[0]
     # for i in xrange(1, 10):
-    perform_kde(places_location)
+    # perform_kde(places_location)
     # perform_kde(places_location, input_func=extract_visits)
 
