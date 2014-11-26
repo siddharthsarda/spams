@@ -16,6 +16,7 @@ if __name__ == "__main__":
     table_name = 'places_location'
     if not engine.dialect.has_table(connection, table_name):
         places_location_mapping = Table(table_name, metadata,
+                                        Column('id', primary_key = True)
                                         Column('userid', Integer),
                                         Column('placeid', Integer),
                                         Column('latitude', Numeric),
