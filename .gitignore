@@ -1,5 +1,7 @@
 *.pyc
 spams/config.py
+spams/density_inference/visualizations/
+spams/density_inference/borders/
 backup/
 *.csv
 *.xlsx
