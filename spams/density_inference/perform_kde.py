@@ -7,14 +7,17 @@ from sqlalchemy.sql import select, and_
 from sklearn.cluster import DBSCAN
 from sqlalchemy import func
 from spams.db.utils import setup_database, get_table
-from mpl_toolkits.basemap import Basemap
-import matplotlib.pyplot as plt
+# from mpl_toolkits.basemap import Basemap
+# import matplotlib.pyplot as plt
 from spams.mappings import LABEL_PLACE_MAPPING
 from sklearn.grid_search import GridSearchCV
 from itertools import groupby, izip, product
 
 
 metadata, connection = setup_database()
+
+best_global_bandwidths = {'Home': 0.000379269019073, 'Home of a Friend': 0.0012742749857 , 'Work': 0.000379269019073, 'Transport Related': 0.0012742749857, 'Work of a Friend': 0.0012742749857,
+                          'Indoor Sports': 0.0012742749857, 'Outdoor Sports': 0.000379269019073, 'Bar;Restaurant': 0.000379269019073, 'Shop': 0.0012742749857, 'Holidays Resort': 0.00428133239872}
 
 def test_kde(test_set, estimators):
     accurate = 0.0
@@ -47,7 +50,7 @@ def test_kde(test_set, estimators):
     return accurate, nrr, counter
 
     
-def train_kde(training_set):    
+def train_kde(training_set, label):    
     xy = np.array(training_set)
     # Convert to radians
     xy *= np.pi /180.
@@ -58,7 +61,7 @@ def train_kde(training_set):
         grid.fit(xy)
         return grid.best_estimator_
     except ValueError:
-        k = KernelDensity(metric="haversine", algorithm="ball_tree", bandwidth=0.001, kernel="exponential")
+        k = KernelDensity(metric="haversine", algorithm="ball_tree", bandwidth=best_global_bandwidths[label], kernel="exponential")
         k.fit(xy)
         return k
 
@@ -104,7 +107,7 @@ def perform_kde(places_location, test, train, input_func= extract_places):
             continue
         label = LABEL_PLACE_MAPPING[label_id]
         training_set = input_func(places_location, label_id, train[label_id])
-        estimators[label] = train_kde(training_set)
+        estimators[label] = train_kde(training_set, label)
         test_set_dict[label] = [(float(r[0]), float(r[1])) for r in connection.execute(select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id.in_(test[label_id]))).fetchall()]
     accuracy, mrr, test_set_size = test_kde(test_set_dict, estimators)
     return accuracy, mrr, test_set_size
@@ -161,11 +164,10 @@ if __name__ == "__main__":
 
     acc = 0.0
     nrr = 0.0
-    for i in xrange(10):
+    for i in xrange(1000):
         test, train = split_test_and_train(places_location)
-        #a, n, counter = perform_kde_visits(places_location, test, train)
-        a, n, counter = kde_with_db_scan(places_location, test, train, input_func=extract_visits)
-        #a,n = kde_with_db_scan(places_location, test, train, input_func=extract_visits)
+        #a, n, counter = perform_kde_places(places_location, test, train)
+        a, n, counter = kde_with_db_scan(places_location, test, train)
         acc += a/counter
         nrr += n/counter
-    print acc/10, nrr/10
+    print acc/1000, nrr/1000
