@@ -27,12 +27,12 @@ def adaptive_kde(places_location, test, train):
     test_set_dict = {}
     training_set = []
     test_place_ids = []
-    test_place_labels = []
     for label, places in test.items():
         test_place_ids.extend(places)
-        test_place_labels.extend([LABEL_PLACE_MAPPING[label] for i in xrange(len(places))])
-    query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id.in_(test_place_ids))
-    test_locations = [(float(r[0]), float(r[1])) for r in connection.execute(query).fetchall()]
+    query = select([places_location.c.latitude, places_location.c.longitude, places_location.c.place_label]).where(places_location.c.id.in_(test_place_ids))
+    results = connection.execute(query).fetchall()
+    test_locations = [(float(r[0]), float(r[1])) for r in results]
+    test_place_labels = [r[2] for r in results]
     print len(test_locations)
     test_locations = np.array(test_locations)
     test_locations *= np.pi/180.
@@ -41,19 +41,20 @@ def adaptive_kde(places_location, test, train):
         if len(train[label_id]) == 0 or len(test[label_id]) == 0:
             continue
         label = LABEL_PLACE_MAPPING[label_id]
-        print label
+        #print label
         training_set = extract_places(places_location, label_id, train[label_id])
         training_set = np.array(training_set)
         training_set *= np.pi/180.
         base_kernel = train_kde(training_set, label)
         # Calculate exponential of the log of densities sent
         densities = [np.exp(x) for x in base_kernel.score_samples(training_set)]
+        #print densities
         ## Get geometric mean of densities G
         density_mean = gmean(densities)
         h = base_kernel.bandwidth
         ## calculate local bandwidths for each x (h_i = h * (G/f(x_i))^0.5)
         local_bandwidths = [h * math.sqrt(density_mean/d) for d in densities]
-        print local_bandwidths
+        #print local_bandwidths
         test_densities = []
         for loc in test_locations:
             dens = 0.0
@@ -64,7 +65,7 @@ def adaptive_kde(places_location, test, train):
             log_dens = np.log(dens/len(training_set))
             test_densities.append(log_dens)
         estimator_densities[label_id] = test_densities
-        print estimator_densities[label_id]
+        #print estimator_densities[label_id]
     accurate = 0.0
     counter = 0.0
     for index, true_label in enumerate(test_place_labels):

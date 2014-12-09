@@ -50,10 +50,7 @@ def test_kde(test_set, estimators):
     return accurate, nrr, counter
 
     
-def train_kde(training_set, label):    
-    xy = np.array(training_set)
-    # Convert to radians
-    xy *= np.pi /180.
+def train_kde(xy, label):    
     params = {'bandwidth': np.logspace(-5, 5, 20), 'kernel' : ['gaussian','exponential']}
     # do a grid search
     try:
@@ -93,7 +90,7 @@ def split_test_and_train(places_location):
         results = [r[0] for r in results]
         result_len = len(results)
         test_len = math.ceil(result_len * 0.1)
-        test_indices = np.random.choice(result_len, test_len)
+        test_indices = np.random.choice(result_len, test_len, replace=False)
         test_dict[label] = [results[i] for i in test_indices]
         train_dict[label] = [r for i,r in enumerate(results) if i not in test_indices]
     return test_dict, train_dict
@@ -107,7 +104,10 @@ def perform_kde(places_location, test, train, input_func= extract_places):
             continue
         label = LABEL_PLACE_MAPPING[label_id]
         training_set = input_func(places_location, label_id, train[label_id])
-        estimators[label] = train_kde(training_set, label)
+        xy = np.array(training_set)
+        # Convert to radians
+        xy *= np.pi /180.
+        estimators[label] = train_kde(xy, label)
         test_set_dict[label] = [(float(r[0]), float(r[1])) for r in connection.execute(select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id.in_(test[label_id]))).fetchall()]
     accuracy, mrr, test_set_size = test_kde(test_set_dict, estimators)
     return accuracy, mrr, test_set_size
@@ -164,10 +164,10 @@ if __name__ == "__main__":
 
     acc = 0.0
     nrr = 0.0
-    for i in xrange(1000):
+    for i in xrange(1):
         test, train = split_test_and_train(places_location)
         #a, n, counter = perform_kde_places(places_location, test, train)
         a, n, counter = kde_with_db_scan(places_location, test, train)
         acc += a/counter
         nrr += n/counter
-    print acc/1000, nrr/1000
+    print acc, nrr
