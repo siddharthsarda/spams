@@ -3,7 +3,7 @@ from scipy.stats.mstats import gmean
 from sklearn.neighbors import DistanceMetric
 import math
 from sklearn.neighbors.ball_tree import kernel_norm
-
+from sklearn.neighbors import NearestNeighbors
 
 def gaussian_density(dist, h):
     return np.exp(-0.5 * (dist * dist) / (h * h))
@@ -21,8 +21,14 @@ def haversine_distance(p1, p2):
     return d.pairwise(X)[0][1]
 
 
-
+K = 10
 def adaptive_kde(places_location, test, train):
+    #nn = NearestNeighbors(n_neighbors=K, metric='haversine')
+    #all_points = [(float(r[0]), float(r[1])) for r in connection.execute(select([places_location.c.latitude, places_location.c.longitude])).fetchall()]
+    #all_points = np.array(all_points)
+    #all_points_new = all_points * np.pi/180.
+    #nn.fit(all_points_new)
+    
     estimator_densities = {}
     test_set_dict = {}
     training_set = []
@@ -33,7 +39,6 @@ def adaptive_kde(places_location, test, train):
     results = connection.execute(query).fetchall()
     test_locations = [(float(r[0]), float(r[1])) for r in results]
     test_place_labels = [r[2] for r in results]
-    print len(test_locations)
     test_locations = np.array(test_locations)
     test_locations *= np.pi/180.
     # print test_locations
@@ -46,24 +51,28 @@ def adaptive_kde(places_location, test, train):
         training_set = np.array(training_set)
         training_set *= np.pi/180.
         base_kernel = train_kde(training_set, label)
-        # Calculate exponential of the log of densities sent
-        densities = [np.exp(x) for x in base_kernel.score_samples(training_set)]
-        #print densities
-        ## Get geometric mean of densities G
-        density_mean = gmean(densities)
-        h = base_kernel.bandwidth
-        ## calculate local bandwidths for each x (h_i = h * (G/f(x_i))^0.5)
-        local_bandwidths = [h * math.sqrt(density_mean/d) for d in densities]
-        #print local_bandwidths
         test_densities = []
-        for loc in test_locations:
-            dens = 0.0
-            for index, point in enumerate(training_set):
-                d = haversine_distance(loc, point)
-                b = local_bandwidths[index]
-                dens += (exponential_density(d, b)/ b*b)
-            log_dens = np.log(dens/len(training_set))
-            test_densities.append(log_dens)
+        #print label
+        for i, loc in enumerate(test_locations):
+            #dist, indices = nn.kneighbors(loc)
+            dist, indices = base_kernel.tree_.query(loc, k=min(25, len(training_set)))
+            #print loc
+            #print dist
+            
+            bandwidth = max(dist[0])
+            #if int(bandwidth) == 0:
+            #    print all_points[i]
+            #print bandwidth
+            if not bandwidth > 0.0:
+                bandwidth = base_kernel.bandwidth
+                print [l * (180 / np.pi) for l in loc]
+
+            #print bandwidth
+            k = KernelDensity(bandwidth = bandwidth, algorithm= base_kernel.algorithm, kernel=base_kernel.kernel, metric=base_kernel.metric, atol=base_kernel.atol, rtol=base_kernel.rtol,
+                    breadth_first=base_kernel.breadth_first, leaf_size=base_kernel.leaf_size, metric_params=base_kernel.metric_params)
+            k.fit(training_set)
+            #print k.score(loc)
+            test_densities.append(k.score(loc))
         estimator_densities[label_id] = test_densities
         #print estimator_densities[label_id]
     accurate = 0.0
@@ -76,15 +85,18 @@ def adaptive_kde(places_location, test, train):
                 max_label = LABEL_PLACE_MAPPING[label_id]
                 max_density = estimator_densities[label_id][index]
         
-        print (max_label, true_label)
+        #print (max_label, true_label)
         if max_label == true_label:
              accurate += 1 
         counter += 1 
-    print accurate/counter
+    return accurate/counter
 
 
 if __name__ == "__main__":
     places_location = get_table("places_location", metadata)
-    test, train = split_test_and_train(places_location)
-    adaptive_kde(places_location, test, train)
+    a = 0.0
+    for i in xrange(1):
+        test, train = split_test_and_train(places_location)
+        a += adaptive_kde(places_location, test, train)
+    print a    
 
