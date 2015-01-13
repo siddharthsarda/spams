@@ -7,6 +7,7 @@ from sqlalchemy import and_, func
 from sklearn.cross_validation import KFold
 from sklearn import svm
 from sklearn.neighbors import DistanceMetric
+from sklearn.grid_search import GridSearchCV
 
 metadata, connection = setup_database()
 places_location = get_table("places_location", metadata)
@@ -110,30 +111,34 @@ def process_usage_frequency(place, user):
 
 def extract_features(place_id, user_id):
     features = []
-    # rel_freq = relative_frequency(place_id, user_id)
-    # dist = distance_from_most_visited_place(place_id, user_id)
+    rel_freq = relative_frequency(place_id, user_id)
+    dist = distance_from_most_visited_place(place_id, user_id)
     #calendar_frequency = calendar_time_frequency(place_id, user_id)
     # app_freq, app_div = application_usage_frequency(place_id, user_id)
     # process_freq, process_type = process_usage_frequency(place_id, user_id)
-    # features.append(rel_freq)
-    # features.append(dist)
+    features.append(rel_freq)
+    features.append(dist)
     # features.append(calendar_frequency)
     # features.append(app_freq)
     # features.append(app_div)
     return np.array(features)
 
 def classify_top_level(x_train, y_train, x_test):
-    clf = svm.SVC()
+    params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
+    clf = GridSearchCV(svm.SVC(), params)
     clf.fit(x_train, y_train)
+    clf = clf.best_estimator_
     return clf.predict(x_test)
 
 def train_classifier_and_predict(training, test):
     if len(test) == 0:
         return 0, len(test)
     y_train, x_train = zip(*training) 
-    y_test, x_test = zip(*test) 
-    clf = svm.SVC()
+    y_test, x_test = zip(*test)
+    params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
+    clf = GridSearchCV(svm.SVC(), params)
     clf.fit(x_train, y_train)
+    clf = clf.best_estimator_
     result = [y == y_test[index] for index, y in enumerate(clf.predict(x_test))]
     return result.count(1), len(result)
 
@@ -146,8 +151,11 @@ def classify_other(training, test):
     sports_training = [(y, x) for (y, x) in training if y in [6, 7]]
     shop_and_food_training = [(y, x) for (y, x) in training if y in [8, 9]]
     y_test, x_test = zip(*test) 
-    clf = svm.SVC()
+    
+    params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
+    clf = GridSearchCV(svm.SVC(), params)
     clf.fit(x_train, y_training_other)
+    clf = clf.best_estimator_
     result = clf.predict(x_test)
     accurate = 0.0
     count = 0.0
