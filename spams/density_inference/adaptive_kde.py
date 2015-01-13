@@ -21,13 +21,12 @@ def haversine_distance(p1, p2):
     return d.pairwise(X)[0][1]
 
 
-K = 10
+K = 15
 def adaptive_kde(places_location, test, train):
-    #nn = NearestNeighbors(n_neighbors=K, metric='haversine')
-    #all_points = [(float(r[0]), float(r[1])) for r in connection.execute(select([places_location.c.latitude, places_location.c.longitude])).fetchall()]
-    #all_points = np.array(all_points)
-    #all_points_new = all_points * np.pi/180.
-    #nn.fit(all_points_new)
+    nn = NearestNeighbors(n_neighbors=K, metric='haversine')
+    all_points = [(float(r[0]), float(r[1])) for r in connection.execute(select([places_location.c.latitude, places_location.c.longitude])).fetchall()]
+    all_points = np.array(all_points)
+    all_points_new = all_points * np.pi/180.
     
     estimator_densities = {}
     test_set_dict = {}
@@ -41,62 +40,76 @@ def adaptive_kde(places_location, test, train):
     test_place_labels = [r[2] for r in results]
     test_locations = np.array(test_locations)
     test_locations *= np.pi/180.
-    # print test_locations
+
+    train_place_ids = []
+    for label, places in train.items():
+        train_place_ids.extend(places)
+    query = select([places_location.c.latitude, places_location.c.longitude, places_location.c.place_label]).where(places_location.c.id.in_(train_place_ids))
+    results = connection.execute(query).fetchall()
+    train_locations = [(float(r[0]), float(r[1])) for r in results]
+    train_locations = np.array(train_locations)
+    train_locations *= np.pi/180.
+    nn.fit(train_locations)
+
+
+     
+    #print  nn.kneighbors(test_locations)[0].shape
+    bandwidths = [max(dist) for dist in nn.kneighbors(test_locations)[0]]
+    #print zip(bandwidths, test_place_labels)
+    #sys.exit(0)
     for label_id in xrange(1, 11):
         if len(train[label_id]) == 0 or len(test[label_id]) == 0:
             continue
         label = LABEL_PLACE_MAPPING[label_id]
-        #print label
         training_set = extract_places(places_location, label_id, train[label_id])
         training_set = np.array(training_set)
         training_set *= np.pi/180.
         base_kernel = train_kde(training_set, label)
         test_densities = []
-        #print label
         for i, loc in enumerate(test_locations):
             #dist, indices = nn.kneighbors(loc)
-            dist, indices = base_kernel.tree_.query(loc, k=min(25, len(training_set)))
-            #print loc
-            #print dist
+            dist, indices = base_kernel.tree_.query(loc, k=min(K, len(training_set)))
             
+            #bandwidth = bandwidths[i]
             bandwidth = max(dist[0])
-            #if int(bandwidth) == 0:
-            #    print all_points[i]
-            #print bandwidth
+            #print (bandwidth, base_kernel.bandwidth)
             if not bandwidth > 0.0:
                 bandwidth = base_kernel.bandwidth
-                print [l * (180 / np.pi) for l in loc]
+                #print [l * (180 / np.pi) for l in loc]
 
-            #print bandwidth
             k = KernelDensity(bandwidth = bandwidth, algorithm= base_kernel.algorithm, kernel=base_kernel.kernel, metric=base_kernel.metric, atol=base_kernel.atol, rtol=base_kernel.rtol,
                     breadth_first=base_kernel.breadth_first, leaf_size=base_kernel.leaf_size, metric_params=base_kernel.metric_params)
             k.fit(training_set)
-            #print k.score(loc)
             test_densities.append(k.score(loc))
         estimator_densities[label_id] = test_densities
-        #print estimator_densities[label_id]
     accurate = 0.0
     counter = 0.0
+    nrr = 0.0
     for index, true_label in enumerate(test_place_labels):
         max_label = None
         max_density = -sys.maxint - 1
+        densities ={}
         for label_id in xrange(1, 11):
-            if estimator_densities[label_id][index] > max_density:
-                max_label = LABEL_PLACE_MAPPING[label_id]
-                max_density = estimator_densities[label_id][index]
-        
-        #print (max_label, true_label)
-        if max_label == true_label:
-             accurate += 1 
+            label = LABEL_PLACE_MAPPING[label_id]
+            densities[label] = estimator_densities[label_id][index]
+        densities = sorted(densities.items(), key=lambda x: x[1], reverse=True)
+        predicted_labels = [label for label,_ in densities]
+        if predicted_labels[0] == true_label:
+             accurate += 1
+        nrr += (1.0/(predicted_labels.index(true_label) + 1)) 
+        #print (predicted_labels[0], true_label) 
         counter += 1 
-    return accurate/counter
+    return accurate/counter, nrr/counter
 
 
 if __name__ == "__main__":
     places_location = get_table("places_location", metadata)
-    a = 0.0
-    for i in xrange(1):
+    net_a = 0.0
+    net_n = 0.0
+    for i in xrange(1000):
         test, train = split_test_and_train(places_location)
-        a += adaptive_kde(places_location, test, train)
-    print a    
+        a, n = adaptive_kde(places_location, test, train)
+        net_a += a
+        net_n += n
+    print net_a/1000, net_n/1000
 
