@@ -11,6 +11,8 @@ from sklearn.neighbors import DistanceMetric
 metadata, connection = setup_database()
 places_location = get_table("places_location", metadata)
 visits_10min = get_table("visits_10min", metadata)
+records = get_table("records", metadata)
+
 
 TOP_LEVEL_MAPPING = {
     2: 0,  # "Home of a friend",
@@ -60,13 +62,64 @@ def distance_from_most_visited_place(place, user):
             break
     return dist.pairwise(X)[0][1]
 
-   
+def calendar_time_frequency(place, user):
+    calendar = get_table("calendar", metadata)
+    visit_times = select([visits_10min.c.time_start]).where(and_(visits_10min.c.userid == user, visits_10min.c.placeid == place)) 
+    visit_times = [t[0] for t in connection.execute(visit_times).fetchall()]
+    freq = 0
+    for t in visit_times:
+        user_records = select([records]).where(and_(records.c.userid == user, records.c.time >= t - 300, records.c.time<= t+300)).alias("user_records")
+        calendar_entry_for_user = select([calendar.c.begin]).where(user_records.c.db_key==calendar.c.db_key)
+        if connection.execute(calendar_entry_for_user).rowcount != 0:
+            freq += 1
+    print freq
+
+def application_frequency_and_variety(place, user):
+    application = get_table("application", metadata)
+    visit_times = select([visits_10min.c.time_start, visits_10min.c.time_end]).where(and_(visits_10min.c.userid == user, visits_10min.c.placeid == place)) 
+    visit_times = [(t[0], t[1]) for t in connection.execute(visit_times).fetchall()]
+    average_freq = 0.0
+    applications = set()
+    for start, end in visit_times:
+        user_records = select([records]).where(and_(records.c.userid == user, records.c.time >= start, records.c.time<= end)).alias("user_records")
+        calendar_entry_for_user = select([func.count(application.c.uid), application.c.uid]).where(user_records.c.db_key==application.c.db_key).group_by(application.c.uid)
+        times_used = 0.0
+        for r, uid in connection.execute(calendar_entry_for_user).fetchall():
+            times_used += r
+            applications.add(uid)
+        average_freq += (times_used / ((end-start)/3600.0))
+    return average_freq/len(visit_times), len(applications)
+
+def process_usage_frequency(place, user):
+    process = get_table("processrelation", metadata)
+    visit_times = select([visits_10min.c.time_start, visits_10min.c.time_end]).where(and_(visits_10min.c.userid == user, visits_10min.c.placeid == place)) 
+    visit_times = [(t[0], t[1]) for t in connection.execute(visit_times).fetchall()]
+    average_freq = 0.0
+    applications = set()
+    for start, end in visit_times:
+        user_records = select([records]).where(and_(records.c.userid == user, records.c.time >= start, records.c.time<= end)).alias("user_records")
+        calendar_entry_for_user = select([func.count(process.c.pathid), process.c.pathid]).where(user_records.c.db_key==process.c.db_key).group_by(process.c.pathid)
+        times_used = 0.0
+        for r, uid in connection.execute(calendar_entry_for_user).fetchall():
+            times_used += r
+            applications.add(uid)
+        average_freq += (times_used / ((end-start)/3600.0))
+    return average_freq/len(visit_times), len(applications)
+
+
+
 def extract_features(place_id, user_id):
     features = []
-    rel_freq = relative_frequency(place_id, user_id)
-    dist = distance_from_most_visited_place(place_id, user_id)
-    features.append(rel_freq)
-    features.append(dist)
+    # rel_freq = relative_frequency(place_id, user_id)
+    # dist = distance_from_most_visited_place(place_id, user_id)
+    #calendar_frequency = calendar_time_frequency(place_id, user_id)
+    # app_freq, app_div = application_usage_frequency(place_id, user_id)
+    # process_freq, process_type = process_usage_frequency(place_id, user_id)
+    # features.append(rel_freq)
+    # features.append(dist)
+    # features.append(calendar_frequency)
+    # features.append(app_freq)
+    # features.append(app_div)
     return np.array(features)
 
 def classify_top_level(x_train, y_train, x_test):
@@ -126,7 +179,7 @@ def perform_multi_level_classification(places_features):
     X = np.array(X)
     Y = np.array(Y)
     n = Y.shape[0]
-    kf = KFold(n=n, n_folds=5)
+    kf = KFold(n=n, n_folds=10)
     overall_accuracy = 0.0
     for train_index, test_index in kf:
         X_train, X_test = X[train_index], X[test_index]
@@ -148,6 +201,7 @@ def perform_multi_level_classification(places_features):
                 work_input.append(test_set[index])
             else:
                 other_input.append(test_set[index])
+        print(len(home_input), len(work_input), len(other_input))        
         h_n, h_d = train_classifier_and_predict(home_training_dataset, home_input)
         w_n, w_d = train_classifier_and_predict(work_training_dataset, work_input)
         o_n, o_d = classify_other(other_training_dataset, other_input)
