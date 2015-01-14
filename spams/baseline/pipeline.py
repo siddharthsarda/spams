@@ -81,9 +81,10 @@ def application_frequency_and_variety(place, user):
     visit_times = [(t[0], t[1]) for t in connection.execute(visit_times).fetchall()]
     average_freq = 0.0
     applications = set()
+    user_records = [(r[0], r[1]) for r in connection.execute(select([records.c.db_key, records.c.time]).where(and_(records.c.userid == user,records.c.type == 'app'))).fetchall()]
     for start, end in visit_times:
-        user_records = select([records]).where(and_(records.c.userid == user, records.c.time >= start, records.c.time<= end)).alias("user_records")
-        calendar_entry_for_user = select([func.count(application.c.uid), application.c.uid]).where(user_records.c.db_key==application.c.db_key).group_by(application.c.uid)
+        filtered_keys = [r[0] for r in user_records if r[1] >= start and r[1] <=end]
+        calendar_entry_for_user = select([func.count(process.c.pathid), process.c.pathid]).where(process.c.db_key.in_(filtered_keys)).group_by(process.c.pathid)
         times_used = 0.0
         for r, uid in connection.execute(calendar_entry_for_user).fetchall():
             times_used += r
@@ -97,9 +98,11 @@ def process_usage_frequency(place, user):
     visit_times = [(t[0], t[1]) for t in connection.execute(visit_times).fetchall()]
     average_freq = 0.0
     applications = set()
+    
+    user_records = [(r[0], r[1]) for r in connection.execute(select([records.c.db_key, records.c.time]).where(and_(records.c.userid == user,records.c.type == 'process'))).fetchall()]
     for start, end in visit_times:
-        user_records = select([records]).where(and_(records.c.userid == user, records.c.time >= start, records.c.time<= end)).alias("user_records")
-        calendar_entry_for_user = select([func.count(process.c.pathid), process.c.pathid]).where(user_records.c.db_key==process.c.db_key).group_by(process.c.pathid)
+        filtered_keys = [r[0] for r in user_records if r[1] >= start and r[1] <=end]
+        calendar_entry_for_user = select([func.count(process.c.pathid), process.c.pathid]).where(process.c.db_key.in_(filtered_keys)).group_by(process.c.pathid)
         times_used = 0.0
         for r, uid in connection.execute(calendar_entry_for_user).fetchall():
             times_used += r
@@ -107,21 +110,38 @@ def process_usage_frequency(place, user):
         average_freq += (times_used / ((end-start)/3600.0))
     return average_freq/len(visit_times), len(applications)
 
+s = set()
+def media_usage_frequency(place, user):
+    mediaplay = get_table("mediaplay", metadata)
+    visit_times = select([visits_10min.c.time_start, visits_10min.c.time_end]).where(and_(visits_10min.c.userid == user, visits_10min.c.placeid == place)) 
+    visit_times = [(t[0], t[1]) for t in connection.execute(visit_times).fetchall()]
+    average_freq = 0.0
+    user_records = [(r[0], r[1]) for r in connection.execute(select([records.c.db_key, records.c.time]).where(and_(records.c.userid == user,records.c.type == 'media_play'))).fetchall()]
+    if len(user_records) == 0:
+        return
+    for start, end in visit_times:
+        filtered = [r[0] for r in user_records if r[1] >= start and r[1] <=end]
+        times_used =  len(filtered)
+        average_freq += (times_used / ((end-start)/3600.0))
+    return average_freq
+
 
 
 def extract_features(place_id, user_id):
     features = []
-    rel_freq = relative_frequency(place_id, user_id)
-    dist = distance_from_most_visited_place(place_id, user_id)
-    #calendar_frequency = calendar_time_frequency(place_id, user_id)
+    #rel_freq = relative_frequency(place_id, user_id)
+    #dist = distance_from_most_visited_place(place_id, user_id)
+    mu_freq = media_usage_frequency(place_id, user_id)
+    # calendar_frequency = calendar_time_frequency(place_id, user_id)
     # app_freq, app_div = application_usage_frequency(place_id, user_id)
     # process_freq, process_type = process_usage_frequency(place_id, user_id)
-    features.append(rel_freq)
-    features.append(dist)
+    # features.append(rel_freq)
+    # features.append(dist)
     # features.append(calendar_frequency)
     # features.append(app_freq)
     # features.append(app_div)
-    return np.array(features)
+    # features.append(mu_freq)
+    # return np.array(features)
 
 def classify_top_level(x_train, y_train, x_test):
     params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
@@ -222,4 +242,6 @@ if __name__ == "__main__":
     query = select([places_location.c.placeid, places_location.c.userid, places_location.c.place_label_int])
     places_with_label = ((r[0], r[1], r[2]) for r in connection.execute(query).fetchall())
     places_features = {(place,user): (label, extract_features(place, user)) for (place,user,label) in places_with_label}
-    print perform_multi_level_classification(places_features)
+    for a in s:
+        print a
+    #print perform_multi_level_classification(places_features)
