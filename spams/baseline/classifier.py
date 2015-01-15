@@ -7,7 +7,7 @@ from sklearn import svm
 from sklearn.pipeline import Pipeline
 from sklearn.neighbors import DistanceMetric
 from sklearn.grid_search import GridSearchCV
-from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import SelectFpr
 from sklearn.feature_selection import chi2
 
 
@@ -39,13 +39,12 @@ OTHER_MAPPING = {
 REVERSE_OUTER_MAPPING = {val:key for (key,val) in OTHER_MAPPING.items()}
 
 KERNEL_PARAMS = ['linear', 'rbf']
-SVM_C_PARAMS = [0.0001,0.001, 0.01, 0.1, 1, 10, 100, 1000, 1000, 10000]
-SELECTION_K_PARAMS = [5, 10, 15, 20]
-params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS, 'selection__k': SELECTION_K_PARAMS}
+SVM_C_PARAMS = [0.0001, 0.001, 0.01, 0.1, 1, 10]
+params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS} #,  'selection__k': SELECTION_K_PARAMS}
 KFOLDS = 10
 
 def classify_top_level(x_train, y_train, x_test):
-    pipeline = Pipeline([('selection', SelectKBest(chi2)),('svm', svm.SVC())])
+    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
@@ -57,7 +56,7 @@ def train_classifier_and_predict(training, test):
         return 0, len(test)
     y_train, x_train = zip(*training) 
     y_test, x_test = zip(*test)
-    pipeline = Pipeline([('selection', SelectKBest(chi2)),('svm', svm.SVC())])
+    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
@@ -74,7 +73,7 @@ def classify_other(training, test):
     sports_training = [(y, x) for (y, x) in training if y in [6, 7]]
     shop_and_food_training = [(y, x) for (y, x) in training if y in [8, 9]]
     y_test, x_test = zip(*test) 
-    pipeline = Pipeline([('selection', SelectKBest(chi2)),('svm', svm.SVC())])
+    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_training_other)
     clf = clf.best_estimator_
@@ -132,7 +131,7 @@ def perform_multi_level_classification(places_features):
                 work_input.append(test_set[index])
             else:
                 other_input.append(test_set[index])
-        print(len(home_input), len(work_input), len(other_input))        
+        logging.debug((len(home_input), len(work_input), len(other_input)))        
         h_n, h_d = train_classifier_and_predict(home_training_dataset, home_input)
         w_n, w_d = train_classifier_and_predict(work_training_dataset, work_input)
         o_n, o_d = classify_other(other_training_dataset, other_input)
