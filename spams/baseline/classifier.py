@@ -4,8 +4,11 @@ import numpy as np
 import math
 from sklearn.cross_validation import KFold
 from sklearn import svm
+from sklearn.pipeline import pipeline
 from sklearn.neighbors import DistanceMetric
 from sklearn.grid_search import GridSearchCV
+from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import chi2
 
 
 TOP_LEVEL_MAPPING = {
@@ -45,6 +48,7 @@ def train_classifier_and_predict(training, test):
         return 0, len(test)
     y_train, x_train = zip(*training) 
     y_test, x_test = zip(*test)
+    
     params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
     clf = GridSearchCV(svm.SVC(), params)
     clf.fit(x_train, y_train)
@@ -139,4 +143,8 @@ if __name__ == "__main__":
             features = row[3:]
             features = [float(f) for f in features]
             places_features[(place, user)] = (label, features)
-    print perform_multi_level_classification(places_features)
+    accuracy = perform_multi_level_classification(places_features)
+    with open("result", "w") as f:
+        writer = csv.writer(f)
+        writer.writerow([accuracy])
+
