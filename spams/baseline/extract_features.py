@@ -280,13 +280,8 @@ def extract_features(place_id, user_id):
     features.extend([call_out, missed_call, textout])
     return features
 
-
-if __name__ == "__main__":
-    query = select([places_location.c.placeid, places_location.c.userid, places_location.c.place_label_int])
-    places_with_label = [(r[0], r[1], r[2]) for r in connection.execute(query).fetchall()]
-    places_with_label = places_with_label[0:3]
-    places_features = {(place,user): (label, extract_features(place, user)) for (place,user,label) in places_with_label}
-    with open("features_test.csv", "w") as f:
+def write_features_to_csv(filename, places_features):
+    with open(filename, "w") as f:
         writer = csv.writer(f)
         for place, user in places_features.keys():
             row = []
@@ -296,4 +291,10 @@ if __name__ == "__main__":
             row.append(label)
             row.extend(features)
             writer.writerow(row)
-    #print perform_multi_level_classification(places_features)
+
+if __name__ == "__main__":
+    query = select([places_location.c.placeid, places_location.c.userid, places_location.c.place_label_int])
+    places_with_label = [(r[0], r[1], r[2]) for r in connection.execute(query).fetchall()]
+    places_with_label = places_with_label[0:3]
+    places_features = {(place,user): (label, extract_features(place, user)) for (place,user,label) in places_with_label}
+    write_features_to_csv("features_general.csv", places_features)
