@@ -4,12 +4,15 @@ import numpy as np
 import math
 from sklearn.cross_validation import KFold
 from sklearn import svm
-from sklearn.pipeline import pipeline
+from sklearn.pipeline import Pipeline
 from sklearn.neighbors import DistanceMetric
 from sklearn.grid_search import GridSearchCV
 from sklearn.feature_selection import SelectKBest
 from sklearn.feature_selection import chi2
 
+
+import logging
+logging.basicConfig(filename='classifier.log',level=logging.DEBUG)
 
 TOP_LEVEL_MAPPING = {
     2: 0,  # "Home of a friend",
@@ -35,12 +38,18 @@ OTHER_MAPPING = {
 
 REVERSE_OUTER_MAPPING = {val:key for (key,val) in OTHER_MAPPING.items()}
 
+KERNEL_PARAMS = ['linear', 'rbf']
+SVM_C_PARAMS = [0.0001,0.001, 0.01, 0.1, 1, 10, 100, 1000, 1000, 10000]
+SELECTION_K_PARAMS = [5, 10, 15, 20]
+params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS, 'selection__k': SELECTION_K_PARAMS}
+KFOLDS = 10
 
 def classify_top_level(x_train, y_train, x_test):
-    params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
-    clf = GridSearchCV(svm.SVC(), params)
+    pipeline = Pipeline([('selection', SelectKBest(chi2)),('svm', svm.SVC())])
+    clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
+    logging.debug(clf)
     return clf.predict(x_test)
 
 def train_classifier_and_predict(training, test):
@@ -48,11 +57,11 @@ def train_classifier_and_predict(training, test):
         return 0, len(test)
     y_train, x_train = zip(*training) 
     y_test, x_test = zip(*test)
-    
-    params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
-    clf = GridSearchCV(svm.SVC(), params)
+    pipeline = Pipeline([('selection', SelectKBest(chi2)),('svm', svm.SVC())])
+    clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
+    logging.debug(clf)
     result = [y == y_test[index] for index, y in enumerate(clf.predict(x_test))]
     return result.count(1), len(result)
 
@@ -65,11 +74,11 @@ def classify_other(training, test):
     sports_training = [(y, x) for (y, x) in training if y in [6, 7]]
     shop_and_food_training = [(y, x) for (y, x) in training if y in [8, 9]]
     y_test, x_test = zip(*test) 
-    
-    params = {'kernel':('linear', 'rbf', 'poly'), 'C':[0.00001, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000]}
-    clf = GridSearchCV(svm.SVC(), params)
+    pipeline = Pipeline([('selection', SelectKBest(chi2)),('svm', svm.SVC())])
+    clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_training_other)
     clf = clf.best_estimator_
+    logging.debug(clf)
     result = clf.predict(x_test)
     accurate = 0.0
     count = 0.0
@@ -101,7 +110,7 @@ def perform_multi_level_classification(places_features):
     X = np.array(X)
     Y = np.array(Y)
     n = Y.shape[0]
-    kf = KFold(n=n, n_folds=10)
+    kf = KFold(n=n, n_folds=KFOLDS)
     overall_accuracy = 0.0
     for train_index, test_index in kf:
         X_train, X_test = X[train_index], X[test_index]
@@ -144,7 +153,6 @@ if __name__ == "__main__":
             features = [float(f) for f in features]
             places_features[(place, user)] = (label, features)
     accuracy = perform_multi_level_classification(places_features)
-    with open("result", "w") as f:
+    with open("result_selection", "w") as f:
         writer = csv.writer(f)
         writer.writerow([accuracy])
-
