@@ -16,8 +16,8 @@ from itertools import groupby, izip, product
 
 metadata, connection = setup_database()
 
-best_global_bandwidths = {'Home': 0.000379269019073, 'Home of a Friend': 0.0012742749857 , 'Work': 0.000379269019073, 'Transport Related': 0.0012742749857, 'Work of a Friend': 0.0012742749857,
-                          'Indoor Sports': 0.0012742749857, 'Outdoor Sports': 0.000379269019073, 'Bar;Restaurant': 0.000379269019073, 'Shop': 0.0012742749857, 'Holidays Resort': 0.00428133239872}
+best_global_bandwidths = {'Home': 0.000379269019073, 'Home of a friend': 0.0012742749857 , 'Work': 0.000379269019073, 'Transport related': 0.0012742749857, 'Work of a friend': 0.0012742749857,
+                          'Indoor sports': 0.0012742749857, 'Outdoor sports': 0.000379269019073, 'Bar;Restaurant': 0.000379269019073, 'Shop': 0.0012742749857, 'Holidays resort': 0.00428133239872}
 
 def test_kde(test_set, estimators):
     accurate = 0.0
@@ -164,10 +164,10 @@ if __name__ == "__main__":
 
     acc = 0.0
     nrr = 0.0
-    for i in xrange(1):
+    for i in xrange(1000):
         test, train = split_test_and_train(places_location)
         #a, n, counter = perform_kde_places(places_location, test, train)
         a, n, counter = kde_with_db_scan(places_location, test, train)
         acc += a/counter
         nrr += n/counter
-    print acc, nrr
+    print acc/1000, nrr/1000

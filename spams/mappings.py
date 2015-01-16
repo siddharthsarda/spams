@@ -1,13 +1,13 @@
 LABEL_PLACE_MAPPING = {
-    2: "Home of a Friend",
-    6: "Indoor Sports",
+    2: "Home of a friend",
+    6: "Indoor sports",
     3: "Work",
     8: "Bar;Restaurant",
-    7: "Outdoor Sports",
-    10: "Holidays Resort",
+    7: "Outdoor sports",
+    10: "Holidays resort",
     1: "Home",
-    4: "Transport Related",
-    5: "Work of a Friend",
+    4: "Transport related",
+    5: "Work of a friend",
     9: "Shop"
 }
 AGE_MAPPING = {1: "<16", 2: "16-21", 3: "22-27", 4: "28-33", 5: "33-38", 6: "39-44", 7: "45-50", 8: ">50"}
