@@ -9,10 +9,10 @@ from sklearn.neighbors import DistanceMetric
 from sklearn.grid_search import GridSearchCV
 from sklearn.feature_selection import SelectFpr
 from sklearn.feature_selection import chi2
-
+from sklearn.preprocessing import StandardScaler
 
 import logging
-logging.basicConfig(filename='classifier.log',level=logging.DEBUG)
+logging.basicConfig(filename='classifier_motion.log',level=logging.DEBUG)
 
 TOP_LEVEL_MAPPING = {
     2: 0,  # "Home of a friend",
@@ -38,13 +38,13 @@ OTHER_MAPPING = {
 
 REVERSE_OUTER_MAPPING = {val:key for (key,val) in OTHER_MAPPING.items()}
 
-KERNEL_PARAMS = ['linear', 'rbf']
-SVM_C_PARAMS = [0.0001, 0.001, 0.01, 0.1, 1, 10]
+KERNEL_PARAMS = ['linear']
+SVM_C_PARAMS = [0.01, 0.1]
 params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS} #,  'selection__k': SELECTION_K_PARAMS}
 KFOLDS = 10
 
 def classify_top_level(x_train, y_train, x_test):
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('svm', svm.SVC())])
+    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
@@ -56,7 +56,8 @@ def train_classifier_and_predict(training, test):
         return 0, len(test)
     y_train, x_train = zip(*training) 
     y_test, x_test = zip(*test)
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('svm', svm.SVC())])
+
+    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
@@ -73,7 +74,8 @@ def classify_other(training, test):
     sports_training = [(y, x) for (y, x) in training if y in [6, 7]]
     shop_and_food_training = [(y, x) for (y, x) in training if y in [8, 9]]
     y_test, x_test = zip(*test) 
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('svm', svm.SVC())])
+    
+    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_training_other)
     clf = clf.best_estimator_
@@ -151,7 +153,24 @@ if __name__ == "__main__":
             features = row[3:]
             features = [float(f) for f in features]
             places_features[(place, user)] = (label, features)
+    with open("motion_features.csv", "r") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            place = int(row[0])
+            user = int(row[1])
+            label = int(row[2])
+            features = row[3:]
+            features = [math.fabs(float(f)) for f in features]
+            for i, f in enumerate(features):
+                if np.isnan(f):
+                    features[i] = 0.0
+            #print features
+            #places_features[(place, user)][1].extend(features)
+
+    
+    
     accuracy = perform_multi_level_classification(places_features)
-    with open("result_selection", "w") as f:
-        writer = csv.writer(f)
-        writer.writerow([accuracy])
+    print accuracy
+    # with open("result_selection", "w") as f:
+    #    writer = csv.writer(f)
+    #    writer.writerow([accuracy])
