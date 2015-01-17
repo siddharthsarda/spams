@@ -39,7 +39,7 @@ OTHER_MAPPING = {
 REVERSE_OUTER_MAPPING = {val:key for (key,val) in OTHER_MAPPING.items()}
 
 KERNEL_PARAMS = ['linear']
-SVM_C_PARAMS = [0.01, 0.1]
+SVM_C_PARAMS = [0.01, 0.1, 1, 10]
 params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS} #,  'selection__k': SELECTION_K_PARAMS}
 KFOLDS = 10
 
@@ -164,8 +164,7 @@ if __name__ == "__main__":
             for i, f in enumerate(features):
                 if np.isnan(f):
                     features[i] = 0.0
-            #print features
-            #places_features[(place, user)][1].extend(features)
+            places_features[(place, user)][1].extend(features)
 
     
     
