@@ -38,7 +38,7 @@ if __name__ == "__main__":
     label_color_dict = {}
     for i, label in enumerate(list(set(semantic_labels))):
         label_color_dict[label] = c_map[i]
-    db = DBSCAN(eps =0.05, metric="haversine", algorithm="ball_tree", min_samples=2).fit(xy)
+    db = DBSCAN(eps =0.025, metric="haversine", algorithm="ball_tree", min_samples=5).fit(xy)
     labels = db.labels_
     # Number of clusters in labels, ignoring noise if present.
         #sys.exit(0)
@@ -57,8 +57,12 @@ if __name__ == "__main__":
     for key in index_label_dict:
         if len(index_label_dict[key]) > len(max_label_indices):
             max_label_indices = index_label_dict[key]
-   
+    handles = []
+    for key in label_color_dict:
+        handles.append(mpatches.Patch(color = label_color_dict[key], label = key))
+
     for label in set(labels):
+        print label
         indices = [x[0] for x in enumerate(labels) if x[1] == label]
         semantic_labels_group = [semantic_labels[i] for i in indices]
 
@@ -79,13 +83,10 @@ if __name__ == "__main__":
             x, y = m(X,Y)
             m.scatter(x,y,3,marker='o',color=label_color_dict[key])
             m.drawcountries()
+        plt.legend(handles = handles)    
+        plt.show()
             #plt.title("Count of points " + str(count))
-    handles = []
-    for key in label_color_dict:
-        handles.append(mpatches.Patch(color = label_color_dict[key], label = key))
-
-    plt.legend(handles = handles)    
-    plt.show()
+    
 
         # print sorted(labels_dict.items(), key=lambda x: x[1], reverse = True)     
         # plot_on_map(xy[indices])
