@@ -8,7 +8,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.neighbors import DistanceMetric
 from sklearn.grid_search import GridSearchCV
 from sklearn.feature_selection import SelectFpr
-from sklearn.feature_selection import chi2
+from sklearn.feature_selection import f_classif
 from sklearn.preprocessing import StandardScaler
 
 import logging
@@ -38,13 +38,15 @@ OTHER_MAPPING = {
 
 REVERSE_OUTER_MAPPING = {val:key for (key,val) in OTHER_MAPPING.items()}
 
-KERNEL_PARAMS = ['linear']
+KERNEL_PARAMS = ['linear', 'rbf']
 SVM_C_PARAMS = [0.01, 0.1, 1, 10]
 params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS} #,  'selection__k': SELECTION_K_PARAMS}
 KFOLDS = 10
+ALGO = f_classif
+ALPHA = 0.15
 
 def classify_top_level(x_train, y_train, x_test):
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
+    pipeline = Pipeline([('selection', SelectFpr(ALGO, alpha=ALPHA)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
@@ -57,7 +59,7 @@ def train_classifier_and_predict(training, test):
     y_train, x_train = zip(*training) 
     y_test, x_test = zip(*test)
 
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
+    pipeline = Pipeline([('selection', SelectFpr(ALGO, alpha=ALPHA)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
@@ -75,7 +77,7 @@ def classify_other(training, test):
     shop_and_food_training = [(y, x) for (y, x) in training if y in [8, 9]]
     y_test, x_test = zip(*test) 
     
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
+    pipeline = Pipeline([('selection', SelectFpr(ALGO, alpha=ALPHA)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_training_other)
     clf = clf.best_estimator_
@@ -160,7 +162,7 @@ if __name__ == "__main__":
             user = int(row[1])
             label = int(row[2])
             features = row[3:]
-            features = [math.fabs(float(f)) for f in features]
+            features = [(float(f)) for f in features]
             for i, f in enumerate(features):
                 if np.isnan(f):
                     features[i] = 0.0
