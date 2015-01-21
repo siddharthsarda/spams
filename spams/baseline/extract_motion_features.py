@@ -38,11 +38,21 @@ def get_features(data):
     corr_xz = (np.cov(Z,X) / (math.sqrt(x_var) * math.sqrt(z_var)))[0][1]
     vector_d = [(x - x_mean, y - y_mean, z - z_mean) for (x,y,z) in izip(X,Y,Z)]
     vector_v = [x_mean, y_mean, z_mean]
-    vector_p = np.multiply((np.dot(vector_d, vector_v)/np.dot(vector_v, vector_v)), vector_v)
-    vector_h = [np.subtract(d, p) for d, p in izip(vector_d, vector_p)]
-    vector_p = np.mean(vector_p, axis=0)
+    vector_p = [np.multiply((np.dot(d, vector_v)/np.dot(vector_v, vector_v)), vector_v) for d in vector_d]
     
-    ret = [x_mean, y_mean, z_mean, x_var, y_var, z_var, mean_magnitude, magnitude_mean, sma, corr_xy, corr_yz, corr_xz]
+    vector_h = [np.subtract(d, p) for d, p in izip(vector_d, vector_p)]
+    mod_vector_p = [np.linalg.norm(p) for p in vector_p]
+    mod_vector_h = [np.linalg.norm(h) for h in vector_h]
+    cor_p_h = (np.cov(mod_vector_h,mod_vector_p) / (math.sqrt(np.var(mod_vector_h)) * math.sqrt(np.var(mod_vector_p))))[0][1]
+    
+    vector_p = np.mean(vector_p, axis=0)
+    vector_h = np.mean(vector_h, axis=0)
+    mod_vector_p = np.mean(mod_vector_p)
+    mod_vector_h = np.mean(mod_vector_h)
+    ret = [x_mean, y_mean, z_mean, x_var, y_var, z_var, mean_magnitude, magnitude_mean, sma, corr_xy, corr_yz, corr_xz, cor_p_h, mod_vector_p, mod_vector_h]
+    ret.extend([x for x in vector_p])
+
+    ret.extend([x for x in vector_h])
     #print ret
     return ret
 
@@ -83,5 +93,5 @@ if __name__ == "__main__":
             average_features = np.mean(visit_features, axis=0)
         #print average_features
         place_label_features[(place, user)] = (label, average_features)
-        #logging.debug(i)
-    #write_features_to_csv("motion_features.csv", place_label_features)    
+        logging.debug(i)
+    write_features_to_csv("motion_all_features.csv", place_label_features)    
