@@ -53,7 +53,6 @@ def get_features(data):
     ret.extend([x for x in vector_p])
 
     ret.extend([x for x in vector_h])
-    #print ret
     return ret
 
 if __name__ == "__main__":
@@ -68,12 +67,14 @@ if __name__ == "__main__":
             single_visit_features = []
             q = select([records.c.db_key]).where(and_(records.c.userid == user, records.c.type == "accel", records.c.time>=start, records.c.time <=end))
             accelerometer_records = connection.execute(q).fetchall()
+            avdels = []
             if len(accelerometer_records) == 0:
                 continue
             for r in accelerometer_records:
                 key = r[0]
-                query = select([accel.c.data]).where(and_(accel.c.db_key == key))
-                d = connection.execute(query).fetchall()[0][0]
+                query = select([accel.c.data, accel.c.avdelt]).where(and_(accel.c.db_key == key))
+                d, avdel = connection.execute(query).fetchall()[0]
+                avdels.append(avdel)
                 import zlib
                 import base64
                 data = zlib.decompress(base64.decodestring(d))
@@ -82,16 +83,24 @@ if __name__ == "__main__":
                 except Exception as e:
                     data = zlib.decompress(base64.decodestring(data))
                     values = eval(data)
+                if len(values) < 5:
+                    continue
                 features = get_features([(x, y, z) for (t, x, y, z) in values])
                 single_visit_features.append(features)
                 #accel_data.extend([(x, y, z) for (t, x, y, z) in values])
-            visit_features.append(np.mean(single_visit_features, axis=0))
+            logging.debug((place, user))
+            if len(single_visit_features) != 0:
+                sf = np.mean(single_visit_features, axis=0)
+                sf = list(sf)
+                sf.extend([np.mean(avdels), np.var(avdels)])
+                visit_features.append(sf)
+            
+            #visit_features = np.append(visit_features, [np.mean(avdels), np.var(avdels)])
         if len(visit_features) == 0:
             #logging.debug((place, user))
-            average_features = [0.0 for i in xrange(1, 13)]
+            average_features = [0.0 for i in xrange(23)]
         else:
             average_features = np.mean(visit_features, axis=0)
-        #print average_features
         place_label_features[(place, user)] = (label, average_features)
         logging.debug(i)
     write_features_to_csv("motion_all_features.csv", place_label_features)    
