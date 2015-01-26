@@ -2,6 +2,7 @@ import sys
 import csv
 import numpy as np
 import math
+import random
 from sklearn.cross_validation import KFold
 from sklearn import svm
 from sklearn.pipeline import Pipeline
@@ -10,6 +11,7 @@ from sklearn.grid_search import GridSearchCV
 from sklearn.feature_selection import SelectFpr
 from sklearn.feature_selection import chi2
 from sklearn.preprocessing import StandardScaler
+from spams.density_inference.perform_kde import priors_with_db_scan
 
 import logging
 logging.basicConfig(filename='classifier_motion.log',level=logging.DEBUG)
@@ -42,21 +44,31 @@ KERNEL_PARAMS = ['linear']
 SVM_C_PARAMS = [0.01, 0.1, 1, 10]
 params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS} #,  'selection__k': SELECTION_K_PARAMS}
 KFOLDS = 10
+PRIOR_WEIGHT = 0.01
 
-def classify_top_level(x_train, y_train, x_test):
+
+def classify_top_level(x_train, y_train, x_test, y_priors=None):
     pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
-    clf = GridSearchCV(pipeline, params)
+    sample_weight = None
+    if y_priors is not None:
+        sample_weight = [1.0 for i in xrange(len(y_train))]
+        y_train.extend(y_priors)
+        x_train = np.vstack((x_train, x_test))
+        sample_weight.extend([PRIOR_WEIGHT for i in xrange(len(y_priors))])
+        clf = GridSearchCV(pipeline, params, fit_params={'svm__sample_weight' : sample_weight})
+    else:
+        clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
     logging.debug(clf)
     return clf.predict(x_test)
 
-def train_classifier_and_predict(training, test):
+def train_classifier_and_predict(training, test, y_priors=None):
     if len(test) == 0:
         return 0, len(test)
     y_train, x_train = zip(*training) 
     y_test, x_test = zip(*test)
-
+    sample_weight = None
     pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_train)
@@ -66,15 +78,15 @@ def train_classifier_and_predict(training, test):
     return result.count(1), len(result)
 
 
-def classify_other(training, test):
+def classify_other(training, test, y_priors=None):
     if len(test) == 0:
         return 0, len(test)
     y_train, x_train = zip(*training)
+    y_test, x_test = zip(*test) 
+    sample_weight = None
     y_training_other = [OTHER_MAPPING[y] for y in y_train]
     sports_training = [(y, x) for (y, x) in training if y in [6, 7]]
     shop_and_food_training = [(y, x) for (y, x) in training if y in [8, 9]]
-    y_test, x_test = zip(*test) 
-    
     pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
     clf = GridSearchCV(pipeline, params)
     clf.fit(x_train, y_training_other)
@@ -101,28 +113,51 @@ def classify_other(training, test):
     count += c
     return accurate, count 
 
+def top_level_accuracy(top_level_predictions, test_set):
+    accurate = 0.0 
+    for index, pred in enumerate(top_level_predictions):
+         if pred == TOP_LEVEL_MAPPING[test_set[index][0]]:
+             accurate += 1
+    return accurate/len(top_level_predictions)         
+             
+
+
+
 
 def perform_multi_level_classification(places_features):
     X = []
     Y = []
-    for label, features in places_features.values():
+    Z = []
+    for place, user in places_features:
+        label, features = places_features[(place, user)]
         X.append(features)
         Y.append(label)
+        Z.append((place, user, label))
     X = np.array(X)
     Y = np.array(Y)
+    Z = np.array(Z)
     n = Y.shape[0]
     kf = KFold(n=n, n_folds=KFOLDS)
     overall_accuracy = 0.0
+    tla = 0.0
+    home_accuracy = 0.0
     for train_index, test_index in kf:
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
+        z_train, z_test = Z[train_index], Z[test_index]
+        priors = priors_with_db_scan(z_test, z_train) 
         training_dataset = zip(y_train, X_train)
         home_training_dataset = [(y, x) for (y, x) in training_dataset if y in [1, 2]]
         work_training_dataset = [(y, x) for (y, x) in training_dataset if y in [3, 5]]
         other_training_dataset = [(y, x) for (y, x) in training_dataset if y in [4, 6, 7, 8, 9, 10]]
         test_set = zip(y_test, X_test)
         y_train_top_level = [TOP_LEVEL_MAPPING[y] for y in y_train]
-        top_level_predictions = classify_top_level(X_train, y_train_top_level, X_test)
+        priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
+        
+        #priors_top_level = [random.randint(1,3) for y in priors]
+        priors_top_level = None
+        top_level_predictions = classify_top_level(X_train, y_train_top_level, X_test, priors_top_level)
+        tla += top_level_accuracy(top_level_predictions, test_set)
         home_input = []
         work_input = []
         other_input = []
@@ -135,11 +170,12 @@ def perform_multi_level_classification(places_features):
                 other_input.append(test_set[index])
         logging.debug((len(home_input), len(work_input), len(other_input)))        
         h_n, h_d = train_classifier_and_predict(home_training_dataset, home_input)
+        home_accuracy += (h_n*1.0)/(h_d *1.0)
         w_n, w_d = train_classifier_and_predict(work_training_dataset, work_input)
         o_n, o_d = classify_other(other_training_dataset, other_input)
         overall_accuracy += ((h_n + w_n + o_n) * 1.0 )/ ((h_d + w_d + o_d) * 1.0)
-        
-        #for index, val in enumerate(top_level_predictions):
+    print tla/len(kf)
+    print home_accuracy/len(kf)
     return overall_accuracy/ len(kf) 
 
 if __name__ == "__main__":

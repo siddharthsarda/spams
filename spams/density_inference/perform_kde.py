@@ -158,41 +158,6 @@ def kde_with_db_scan(places_location, test, train, input_func=extract_places):
         net_counter += counter
     return net_acc, net_nrr, net_counter
 
-
-def get_priors_with_db_scan(places_location):
-    place_group_dict, group_place_dict = perform_db_scan(places_location)
-    groups = group_place_dict.keys()
-    scores = defaultdict(list)
-    for group in groups:
-        predictors = {}
-        for label in xrange(1, 11):
-            restrict_to = group_place_dict[group]
-            lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.place_label_int==label).where(places_location.c.id.in_(restrict_to))
-            results = connection.execute(lat_long_query).fetchall()
-            xy = np.array([(float(r[0]), float(r[1])) for r in results])
-            xy *= np.pi /180.
-            if len(xy) == 0:
-                continue
-            predictors[label] = train_kde(xy, LABEL_PLACE_MAPPING[label])
-        for place in group_place_dict[group]:
-            lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id==place)
-            val = [float(r) for r in connection.execute(lat_long_query).fetchall()[0]]
-            val = [v* np.pi/180. for v in val]
-            print val
-            scores[place] = [0.0 for i in xrange(10)]
-            for label in xrange(1, 11):
-                if label not in predictors:
-                    continue
-                scores[place][label-1] = predictors[label].score(val)
-    accurate = 0.0
-    count = 0.0
-    for place in scores.keys():
-        label = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
-        if scores[place].index(max(scores[place])) == label-1:
-            accurate += 1
-        count += 1    
-    print accurate/count
-
 # train is place ids with label
 # test is just place ids
 def priors_with_db_scan(test, train, input_func=extract_places):
@@ -224,42 +189,43 @@ def priors_with_db_scan(test, train, input_func=extract_places):
             # Convert to radians
             xy *= np.pi /180.
             estimators[label] = train_kde(xy, LABEL_PLACE_MAPPING[label])
-            #print LABEL_PLACE_MAPPING[label], estimators[label]
         for p in group_test_dict[g]:
             scores[p] = [0.0 for i in xrange(10)]
-            #print p
             lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id==p)
             val = [float(r) for r in connection.execute(lat_long_query).fetchall()[0]]
             val = [v* np.pi/180. for v in val]
-            print val
             for label in xrange(1, 11):
                 if label not in estimators:
                     continue
                 scores[p][label-1] = estimators[label].score(val)
-            #print scores[p]
-            #     accurate += 1
+            # for k in xrange(len(scores[p])):
+            #    scores[p][k] /= sum(scores[p])
     accurate = 0.0
     count = 0.0
     for place in scores.keys():
         label = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
-        # print scores[place]
-        # print scores[place].index(max(scores[place])) 
         if scores[place].index(max(scores[place])) == label-1:
             accurate += 1
+            #print max(scores[place])
         count += 1    
-    print accurate/count
+    accuracy = accurate/count
+    prior_labels = []
+    for place in test:
+        predicted_label = scores[place].index(max(scores[place])) + 1
+        prior_labels.append(predicted_label)
 
-    # print accurate/count   
+    return prior_labels
+
+
 
 if __name__ == "__main__":
     places_location = get_table("places_location", metadata)
-    get_priors_with_db_scan(places_location)
-    # acc = 0.0
-    # nrr = 0.0
-    # for i in xrange(1000):
-    #    test, train = split_test_and_train(places_location)
+    acc = 0.0
+    nrr = 0.0
+    for i in xrange(1000):
+        test, train = split_test_and_train(places_location)
         #a, n, counter = perform_kde_places(places_location, test, train)
-    #    a, n, counter = kde_with_db_scan(places_location, test, train)
-    #    acc += a/counter
-    #    nrr += n/counter
-    # print acc/1000, nrr/1000
+        a, n, counter = kde_with_db_scan(places_location, test, train)
+        acc += a/counter
+        nrr += n/counter
+    print acc/1000, nrr/1000
