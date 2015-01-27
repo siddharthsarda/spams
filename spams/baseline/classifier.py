@@ -12,6 +12,8 @@ from sklearn.feature_selection import SelectFpr
 from sklearn.feature_selection import chi2
 from sklearn.preprocessing import StandardScaler
 from spams.density_inference.perform_kde import priors_with_db_scan
+from collections import defaultdict
+from spams.mappings import LABEL_PLACE_MAPPING
 
 import logging
 logging.basicConfig(filename='classifier_motion.log',level=logging.DEBUG)
@@ -46,8 +48,7 @@ params = {'svm__kernel': KERNEL_PARAMS, 'svm__C': SVM_C_PARAMS} #,  'selection__
 KFOLDS = 10
 PRIOR_WEIGHT = 0.01
 
-
-def classify_top_level(x_train, y_train, x_test, y_priors=None):
+def get_best_estimator(x_train, y_train, x_test, y_priors=None):
     pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
     sample_weight = None
     if y_priors is not None:
@@ -61,6 +62,11 @@ def classify_top_level(x_train, y_train, x_test, y_priors=None):
     clf.fit(x_train, y_train)
     clf = clf.best_estimator_
     logging.debug(clf)
+    return clf
+
+
+def classify_top_level(x_train, y_train, x_test, y_priors=None):
+    clf = get_best_estimator(x_train, y_train, x_test, y_priors)
     return clf.predict(x_test)
 
 def train_classifier_and_predict(training, test, y_priors=None, class_weight= None):
@@ -71,11 +77,7 @@ def train_classifier_and_predict(training, test, y_priors=None, class_weight= No
     places = [y[0] for y in y_test]
     y_test = [y[1] for y in y_test]
     y_train = [y[1] for y in y_train]
-    sample_weight = None
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC(class_weight = class_weight))])
-    clf = GridSearchCV(pipeline, params)
-    clf.fit(x_train, y_train)
-    clf = clf.best_estimator_
+    clf = get_best_estimator(x_train, y_train, x_test, y_priors)
     logging.debug(clf)
     predictions = clf.predict(x_test)
     answers = zip(places, predictions, y_test)
@@ -91,19 +93,17 @@ def classify_other(training, test, y_priors=None):
     y_test, x_test = zip(*test) 
     sample_weight = None
     y_training_other = [OTHER_MAPPING[y[1]] for y in y_train]
-    sports_training = [(y, x) for (y, x) in training if y[1] in [6, 7]]
-    shop_and_food_training = [(y, x) for (y, x) in training if y[1] in [8, 9]]
-    pipeline = Pipeline([('selection', SelectFpr(chi2, alpha=0.05)),('scaler', StandardScaler()),('svm', svm.SVC())])
-    clf = GridSearchCV(pipeline, params)
-    clf.fit(x_train, y_training_other)
-    clf = clf.best_estimator_
-    logging.debug(clf)
-    result = clf.predict(x_test)
+    result = classify_top_level(x_train, y_training_other, x_test)
+    
     accurate = 0.0
     count = 0.0
+    answers = []
+    
+    sports_training = [(y, x) for (y, x) in training if y[1] in [6, 7]]
+    shop_and_food_training = [(y, x) for (y, x) in training if y[1] in [8, 9]]
     sports_test = []
     food_shop_test = []
-    answers = []
+
     for index, val in enumerate(result):
         if val == 0:
            sports_test.append(test[index])
@@ -113,6 +113,7 @@ def classify_other(training, test, y_priors=None):
            count += 1
            accurate += REVERSE_OUTER_MAPPING[val] == y_test[index][1]
            answers.append((y_test[index][0], REVERSE_OUTER_MAPPING[val], y_test[index][1]))
+    
     a,c,d  = train_classifier_and_predict (shop_and_food_training, food_shop_test)
     accurate += a
     count += c
@@ -129,36 +130,41 @@ def top_level_accuracy(top_level_predictions, test_set):
          if pred == TOP_LEVEL_MAPPING[test_set[index][0][1]]:
              accurate += 1
     return accurate/len(top_level_predictions)         
-             
 
 
+def get_statistics(answers):
+    each_label_accuracy = {}
+    confusion_matrix = defaultdict(dict)
+    for label in xrange(1, 11):
+        each_label_accuracy[label] = [0, 0]
+    for place, pred, label in answers:
+        if LABEL_PLACE_MAPPING[pred] not in confusion_matrix[LABEL_PLACE_MAPPING[label]]:
+            confusion_matrix[LABEL_PLACE_MAPPING[label]][LABEL_PLACE_MAPPING[pred]] = 0
+        confusion_matrix[LABEL_PLACE_MAPPING[label]][LABEL_PLACE_MAPPING[pred]] += 1
+        each_label_accuracy[label][1] += 1
+        if pred == label:
+            each_label_accuracy[label][0] += 1
+    return each_label_accuracy, confusion_matrix
 
 
 def perform_multi_level_classification(places_features):
     X = []
     Y = []
-    Z = []
     for place, user in places_features:
         label, features = places_features[(place, user)]
         X.append(features)
         Y.append(((place, user) , label))
-        Z.append((place, user, label))
     X = np.array(X)
     Y = np.array(Y)
-    Z = np.array(Z)
     n = Y.shape[0]
     kf = KFold(n=n, n_folds=KFOLDS)
     tla = 0.0
+    answers = []
     overall_accuracy = 0.0
-    accuracy_other = 0.0
-    each_label_accuracy = {}
-    for label in xrange(1, 11):
-        each_label_accuracy[label] = [0, 0]
     for train_index, test_index in kf:
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
-        z_train, z_test = Z[train_index], Z[test_index]
-        priors = priors_with_db_scan(z_test, z_train) 
+        priors = priors_with_db_scan(y_test, y_train) 
         training_dataset = zip(y_train, X_train)
         home_training_dataset = [(y, x) for (y, x) in training_dataset if y[1] in [1, 2]]
         work_training_dataset = [(y, x) for (y, x) in training_dataset if y[1] in [3, 5]]
@@ -166,9 +172,8 @@ def perform_multi_level_classification(places_features):
         test_set = zip(y_test, X_test)
         y_train_top_level = [TOP_LEVEL_MAPPING[y[1]] for y in y_train]
         priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
-        
         #priors_top_level = [random.randint(1,3) for y in priors]
-        priors_top_level = None
+        #priors_top_level = None
         top_level_predictions = classify_top_level(X_train, y_train_top_level, X_test, priors_top_level)
         tla += top_level_accuracy(top_level_predictions, test_set)
         home_input = []
@@ -186,28 +191,11 @@ def perform_multi_level_classification(places_features):
         w_n, w_d, work_answers = train_classifier_and_predict(work_training_dataset, work_input)
         o_n, o_d, other_answers = classify_other(other_training_dataset, other_input)
         overall_accuracy += ((h_n + w_n + o_n) * 1.0 )/ ((h_d + w_d + o_d) * 1.0)
-        answers = []
-        answers.extend(home_answers)
-        answers.extend(work_answers)
-        answers.extend(other_answers)
-        a_d = {}
-        a_other =0.0
-        for place, pred, label in answers:
-            a_d[place] = (pred, label)
-            each_label_accuracy[label][1] += 1
-            if pred == label:
-                a_other += 1
-                each_label_accuracy[label][0] += 1
-        accuracy_other += a_other/len(answers)
-    a = 0.0
-    c = 0.0
-    for p, l in each_label_accuracy.values():
-        a += p
-        c += l
-    #for label in xrange(1, 11):
-    #    print (each_label_accuracy[label][0] * 1.0) / each_label_accuracy[label][1]
-
-    print tla/ len(kf)
+        for a in [home_answers, work_answers, other_answers]:
+            answers.extend(a)
+    #gets confusion matrix and per label accuracy
+    #print get_statistics(answers)
+    
     #print accuracy_other/ len(kf)
     return overall_accuracy/ len(kf)
 
