@@ -162,24 +162,23 @@ def kde_with_db_scan(places_location, test, train, input_func=extract_places):
 # test is just place ids
 def priors_with_db_scan(test, train, input_func=extract_places):
     #test is originally a tuple of place, user, label
-    test_labels = [t[2] for t in test]
+    test_labels = [t[1] for t in test]
     places_location = get_table("places_location", metadata)
     q = select([places_location.c.id]) 
-    test = [connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0] for (place, user, _) in test]
-    train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for (place, user, label) in train]
+    test = [connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0] for ((place, user), _) in test]
+    train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for ((place, user), label) in train]
     train = defaultdict(list)
     for id, label in train_tuples:
         train[label].append(id)
     place_group_dict, group_place_dict = perform_db_scan(places_location)
     groups = group_place_dict.keys()
     group_train_dict = {}
-    group_test_dict = {}
-    scores = {}
+    test_scores = {}
     accurate = 0.0
     count = len(test)
     for g in groups:
         estimators = {}
-        group_test_dict[g] = [p for p in test if place_group_dict[p] == g]
+        group_test = [p for p in test if place_group_dict[p] == g]
         for label in xrange(1, 11):
             places_in_group = [p for p in train[label] if place_group_dict[p] == g]
             if len(places_in_group) == 0:
@@ -189,29 +188,30 @@ def priors_with_db_scan(test, train, input_func=extract_places):
             # Convert to radians
             xy *= np.pi /180.
             estimators[label] = train_kde(xy, LABEL_PLACE_MAPPING[label])
-        for p in group_test_dict[g]:
-            scores[p] = [0.0 for i in xrange(10)]
+        for p in group_test:
+            test_scores[p] = [0.0 for i in xrange(10)]
             lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id==p)
             val = [float(r) for r in connection.execute(lat_long_query).fetchall()[0]]
             val = [v* np.pi/180. for v in val]
             for label in xrange(1, 11):
                 if label not in estimators:
                     continue
-                scores[p][label-1] = estimators[label].score(val)
+                test_scores[p][label-1] = estimators[label].score(val)
             # for k in xrange(len(scores[p])):
             #    scores[p][k] /= sum(scores[p])
     accurate = 0.0
     count = 0.0
-    for place in scores.keys():
+    for place in test_scores.keys():
         label = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
-        if scores[place].index(max(scores[place])) == label-1:
+        if test_scores[place].index(max(test_scores[place])) == label-1:
             accurate += 1
             #print max(scores[place])
         count += 1    
     accuracy = accurate/count
+    print accuracy
     prior_labels = []
     for place in test:
-        predicted_label = scores[place].index(max(scores[place])) + 1
+        predicted_label = test_scores[place].index(max(test_scores[place])) + 1
         prior_labels.append(predicted_label)
 
     return prior_labels
