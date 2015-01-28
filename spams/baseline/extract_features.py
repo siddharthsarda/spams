@@ -144,13 +144,13 @@ def holiday_to_weekday(place, user):
     return holiday/weekday
 
 def time_features(place, user):
-    visit_times = select([visits_10min.c.time_start, visits_10min.c.time_end]).where(and_(visits_10min.c.userid == user, visits_10min.c.placeid == place))
-    visit_times = [(t[0], t[1]) for t in connection.execute(visit_times).fetchall()]
+    visit_times = select([visits_10min.c.time_start, visits_10min.c.time_end, visits_10min.c.tz_start, visits_10min.c.tz_end]).where(and_(visits_10min.c.userid == user, visits_10min.c.placeid == place))
+    visit_times = [(t[0], t[1], t[2], t[3]) for t in connection.execute(visit_times).fetchall()]
    
     frequencies = [0 for i in xrange(0,12)]
-    for start, end in visit_times:
-        start_hour = datetime.datetime.fromtimestamp(start).hour
-        end_hour = datetime.datetime.fromtimestamp(end).hour 
+    for start, end, t_start, t_end in visit_times:
+        start_hour = datetime.datetime.fromtimestamp(start + t_start).hour
+        end_hour = datetime.datetime.fromtimestamp(end + t_end).hour 
         for i in xrange(start_hour, end_hour + 1):
             frequencies[i/2] += 1 
     return frequencies
@@ -295,6 +295,5 @@ def write_features_to_csv(filename, places_features):
 if __name__ == "__main__":
     query = select([places_location.c.placeid, places_location.c.userid, places_location.c.place_label_int])
     places_with_label = [(r[0], r[1], r[2]) for r in connection.execute(query).fetchall()]
-    places_with_label = places_with_label[0:3]
     places_features = {(place,user): (label, extract_features(place, user)) for (place,user,label) in places_with_label}
-    write_features_to_csv("features_general.csv", places_features)
+    write_features_to_csv("features_general_new.csv", places_features)
