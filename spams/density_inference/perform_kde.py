@@ -16,8 +16,8 @@ from itertools import groupby, izip, product
 
 metadata, connection = setup_database()
 
-best_global_bandwidths = {'Home': 0.000379269019073, 'Home of a friend': 0.0012742749857 , 'Work': 0.000379269019073, 'Transport related': 0.0012742749857, 'Work of a friend': 0.0012742749857,
-                          'Indoor sports': 0.0012742749857, 'Outdoor sports': 0.000379269019073, 'Bar;Restaurant': 0.000379269019073, 'Shop': 0.0012742749857, 'Holidays resort': 0.00428133239872}
+best_global_bandwidths = {1: 0.000379269019073, 2: 0.0012742749857 , 3: 0.000379269019073, 4: 0.0012742749857, 5: 0.0012742749857,
+                          6: 0.0012742749857, 7: 0.000379269019073, 8: 0.000379269019073, 9: 0.0012742749857, 10: 0.00428133239872}
 
 def test_kde(test_set, estimators):
     accurate = 0.0
@@ -40,7 +40,7 @@ def test_kde(test_set, estimators):
             sorted_dict = sorted(score_dict.items(), key=lambda x: x[1], reverse=True)    
             sorted_labels = [s[0] for s in sorted_dict]
             if sorted_labels[0] == label:
-                accurate +=1
+                accurate += 1
             else:
                 missed[label][sorted_labels[0]] += 1
 
@@ -63,11 +63,11 @@ def train_kde(xy, label):
         return k
 
 
-def extract_places(places_location, label_id, restrict_to):
+def extract_places(places_location, label_id, restrict_to, attribute='label'):
     if len(restrict_to) == 0:
         return []
-
-    lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.place_label_int==label_id).where(places_location.c.id.in_(restrict_to))
+    if attribute == 'label':
+        lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.place_label_int==label_id).where(places_location.c.id.in_(restrict_to))
     results = connection.execute(lat_long_query).fetchall()
     return [(float(r[0]), float(r[1])) for r in results]
 
@@ -158,63 +158,84 @@ def kde_with_db_scan(places_location, test, train, input_func=extract_places):
         net_counter += counter
     return net_acc, net_nrr, net_counter
 
+
+def get_coordinates(places_location, p):
+    lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id==p)
+    val = [float(r) for r in connection.execute(lat_long_query).fetchall()[0]]
+    val = [v* np.pi/180. for v in val]
+    return val
+
+
+def get_scores(places_location, p, predictor_iterator, estimators):
+    scores = {}
+    val = get_coordinates(places_location, p)
+    for predictor in predictor_iterator:
+        if predictor not in estimators:
+            continue
+        scores[predictor] = estimators[predictor].score(val)
+    return scores    
+
+
 # train is place ids with label
 # test is just place ids
-def priors_with_db_scan(test, train, input_func=extract_places):
+def priors_with_db_scan(test, train, input_func=extract_places, attribute = 'label', return_predictions = True):
     #test is originally a tuple of place, user, label
-    test_labels = [t[1] for t in test]
+    
     places_location = get_table("places_location", metadata)
     q = select([places_location.c.id]) 
+    if attribute == 'label':
+        test_labels = [t[1] for t in test]
+        train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for ((place, user), label) in train]
+        predictor_iterator = range(1, 11)
     test = [connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0] for ((place, user), _) in test]
-    train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for ((place, user), label) in train]
-    train = defaultdict(list)
-    for id, label in train_tuples:
-        train[label].append(id)
+    train_predictor_dict = defaultdict(list)
+    for id, predictor in train_tuples:
+        train_predictor_dict[predictor].append(id)
     place_group_dict, group_place_dict = perform_db_scan(places_location)
     groups = group_place_dict.keys()
-    group_train_dict = {}
     test_scores = {}
     accurate = 0.0
     count = len(test)
+    train_scores = {}
     for g in groups:
         estimators = {}
         group_test = [p for p in test if place_group_dict[p] == g]
-        for label in xrange(1, 11):
-            places_in_group = [p for p in train[label] if place_group_dict[p] == g]
+        for predictor in predictor_iterator:
+            places_in_group = [p for p in train_predictor_dict[predictor] if place_group_dict[p] == g]
             if len(places_in_group) == 0:
                 continue
-            training_set = input_func(places_location, label, places_in_group)
+            training_set = input_func(places_location, predictor, places_in_group, attribute)
             xy = np.array(training_set)
             # Convert to radians
             xy *= np.pi /180.
-            estimators[label] = train_kde(xy, LABEL_PLACE_MAPPING[label])
+            estimators[predictor] = train_kde(xy, predictor)
+
         for p in group_test:
-            test_scores[p] = [0.0 for i in xrange(10)]
-            lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.id==p)
-            val = [float(r) for r in connection.execute(lat_long_query).fetchall()[0]]
-            val = [v* np.pi/180. for v in val]
-            for label in xrange(1, 11):
-                if label not in estimators:
-                    continue
-                test_scores[p][label-1] = estimators[label].score(val)
-            # for k in xrange(len(scores[p])):
-            #    scores[p][k] /= sum(scores[p])
+            test_scores[p] = get_scores(places_location, p, predictor_iterator, estimators)
+        for p in group_place_dict[g]:
+            train_scores[p] = get_scores(places_location, p, predictor_iterator, estimators)
     accurate = 0.0
     count = 0.0
     for place in test_scores.keys():
-        label = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
-        if test_scores[place].index(max(test_scores[place])) == label-1:
+        if attribute == 'label':
+            true_predictor = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
+        predicted_value, max_score =  max(test_scores[place].items(), key = lambda x: x[1])
+        if predicted_value == true_predictor:
             accurate += 1
             #print max(scores[place])
         count += 1    
     accuracy = accurate/count
     print accuracy
-    prior_labels = []
-    for place in test:
-        predicted_label = test_scores[place].index(max(test_scores[place])) + 1
-        prior_labels.append(predicted_label)
 
-    return prior_labels
+    if return_predictions:
+        prior_labels = []
+        for place in test:
+            predicted_value, max_score =  max(test_scores[place].items(), key = lambda x: x[1])
+            prior_labels.append(predicted_value)
+        return prior_labels
+    else:
+        pass
+
 
 
 

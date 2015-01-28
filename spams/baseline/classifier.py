@@ -147,7 +147,7 @@ def get_statistics(answers):
     return each_label_accuracy, confusion_matrix
 
 
-def perform_multi_level_classification(places_features):
+def perform_multi_level_classification(places_features, kde_as_priors = True):
     X = []
     Y = []
     for place, user in places_features:
@@ -164,16 +164,18 @@ def perform_multi_level_classification(places_features):
     for train_index, test_index in kf:
         X_train, X_test = X[train_index], X[test_index]
         y_train, y_test = Y[train_index], Y[test_index]
-        priors = priors_with_db_scan(y_test, y_train) 
+        if kde_as_priors:
+            priors = priors_with_db_scan(y_test, y_train)
+            priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
+        else:
+            priors = None
+            priors_top_level = None
         training_dataset = zip(y_train, X_train)
         home_training_dataset = [(y, x) for (y, x) in training_dataset if y[1] in [1, 2]]
         work_training_dataset = [(y, x) for (y, x) in training_dataset if y[1] in [3, 5]]
         other_training_dataset = [(y, x) for (y, x) in training_dataset if y[1] in [4, 6, 7, 8, 9, 10]]
         test_set = zip(y_test, X_test)
         y_train_top_level = [TOP_LEVEL_MAPPING[y[1]] for y in y_train]
-        priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
-        #priors_top_level = [random.randint(1,3) for y in priors]
-        #priors_top_level = None
         top_level_predictions = classify_top_level(X_train, y_train_top_level, X_test, priors_top_level)
         tla += top_level_accuracy(top_level_predictions, test_set)
         home_input = []
