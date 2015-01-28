@@ -12,6 +12,7 @@ from spams.db.utils import setup_database, get_table
 from spams.mappings import LABEL_PLACE_MAPPING
 from sklearn.grid_search import GridSearchCV
 from itertools import groupby, izip, product
+import operator
 
 
 metadata, connection = setup_database()
@@ -171,9 +172,15 @@ def get_scores(places_location, p, predictor_iterator, estimators):
     val = get_coordinates(places_location, p)
     for predictor in predictor_iterator:
         if predictor not in estimators:
+            scores[predictor] = 0.0
             continue
-        scores[predictor] = estimators[predictor].score(val)
-    return scores    
+        score = estimators[predictor].score(val)
+        if score < 0:
+            scores[predictor] = 0.0
+        else: 
+            scores[predictor] = score    
+    #Sort by key    
+    return sorted(scores.items(), key=operator.itemgetter(0))   
 
 
 # train is place ids with label
@@ -219,7 +226,7 @@ def priors_with_db_scan(test, train, input_func=extract_places, attribute = 'lab
     for place in test_scores.keys():
         if attribute == 'label':
             true_predictor = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
-        predicted_value, max_score =  max(test_scores[place].items(), key = lambda x: x[1])
+        predicted_value, max_score =  max(test_scores[place], key = lambda x: x[1])
         if predicted_value == true_predictor:
             accurate += 1
             #print max(scores[place])
@@ -230,11 +237,13 @@ def priors_with_db_scan(test, train, input_func=extract_places, attribute = 'lab
     if return_predictions:
         prior_labels = []
         for place in test:
-            predicted_value, max_score =  max(test_scores[place].items(), key = lambda x: x[1])
+            predicted_value, max_score =  max(test_scores[place], key = lambda x: x[1])
             prior_labels.append(predicted_value)
         return prior_labels
     else:
-        pass
+        test_scores = {tuple(connection.execute(select([places_location.c.placeid, places_location.c.userid]).where(places_location.c.id == p)).fetchall()[0]): [s[1] for s in score] for p, score in test_scores.items()}
+        training_scores = {tuple(connection.execute(select([places_location.c.placeid, places_location.c.userid]).where(places_location.c.id == p)).fetchall()[0]): [s[1] for s in score] for p, score in train_scores.items()}
+        return training_scores, test_scores
 
 
 
