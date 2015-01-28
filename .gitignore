@@ -1,7 +1,12 @@
 *.pyc
-spams/config.py
+*.pyo
+*.pyospams/config.py
+spams/density_inference/plot_species_kde.py
 spams/density_inference/visualizations/
 spams/density_inference/borders/
+spams/config.py
 backup/
 *.csv
 *.xlsx
+*.log
+*.out
