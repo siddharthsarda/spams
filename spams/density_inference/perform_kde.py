@@ -191,14 +191,18 @@ def get_scores(places_location, p, predictor_iterator, estimators):
 
 # train is place ids with label
 # test is just place ids
-def priors_with_db_scan(test, train, input_func=extract_places, attribute = 'label', return_predictions = True):
+
+iterator_dict = {'label': range(1, 11), 'gender': range(1, 3), 'working': range(1, 9), 'age_group': range(1, 9)}
+
+def priors_with_kde(test, train, input_func=extract_places, attribute = 'label', return_predictions = True, method='dbscan'):
     #test is originally a tuple of place, user, label
     
     places_location = get_table("places_location", metadata)
     q = select([places_location.c.id]) 
+    
+    predictor_iterator = iterator_dict[attribute]
     if attribute == 'label':
         train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for ((place, user), label) in train]
-        predictor_iterator = range(1, 11)
     else:
         demographics = get_table("demographics", metadata)
         demo_q = select([demographics.c[attribute]])
@@ -208,35 +212,56 @@ def priors_with_db_scan(test, train, input_func=extract_places, attribute = 'lab
             demo_r =  connection.execute(demo_q.where(demographics.c.userid == user))
             if demo_r.rowcount == 1:
                 train_tuples.append((id, demo_r.fetchall()[0][0]))
-        predictor_iterator = range(1, 3)
+            else:
+                train_tuples.append((id, None))
 
     test = [connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0] for ((place, user), _) in test]
     train_predictor_dict = defaultdict(list)
     for id, predictor in train_tuples:
-        train_predictor_dict[predictor].append(id)
-    place_group_dict, group_place_dict = perform_db_scan(places_location)
-    groups = group_place_dict.keys()
+        if predictor is not None:
+            train_predictor_dict[predictor].append(id)
+    
     test_scores = {}
     accurate = 0.0
     count = len(test)
     train_scores = {}
-    for g in groups:
-        estimators = {}
-        group_test = [p for p in test if place_group_dict[p] == g]
-        for predictor in predictor_iterator:
-            places_in_group = [p for p in train_predictor_dict[predictor] if place_group_dict[p] == g]
-            if len(places_in_group) == 0:
-                continue
-            training_set = input_func(places_location, predictor, places_in_group, attribute)
-            xy = np.array(training_set)
-            # Convert to radians
-            xy *= np.pi /180.
-            estimators[predictor] = train_kde(xy, predictor)
 
-        for p in group_test:
+    if method == 'dbscan': 
+        place_group_dict, group_place_dict = perform_db_scan(places_location)
+        groups = group_place_dict.keys()
+        for g in groups:
+            estimators = {}
+            group_test = [p for p in test if place_group_dict[p] == g]
+            for predictor in predictor_iterator:
+                places_in_group = [p for p in train_predictor_dict[predictor] if place_group_dict[p] == g]
+                if len(places_in_group) == 0:
+                    continue
+                training_set = input_func(places_location, predictor, places_in_group, attribute)
+                xy = np.array(training_set)
+                # Convert to radians
+                xy *= np.pi /180.
+                estimators[predictor] = train_kde(xy, predictor)
+            for p in group_test:
+                test_scores[p] = get_scores(places_location, p, predictor_iterator, estimators)
+            for p in group_place_dict[g]:
+                train_scores[p] = get_scores(places_location, p, predictor_iterator, estimators)
+    elif method == 'simple':
+        estimators = {}
+        for predictor in predictor_iterator:
+            places_predictor = train_predictor_dict[predictor]
+            if len(places_predictor) == 0:
+                continue
+                training_set = input_func(places_location, predictor, places_predictor, attribute)
+                xy = np.array(training_set)
+                # Convert to radians
+                xy *= np.pi /180.
+                estimators[predictor] = train_kde(xy, predictor)
+        for p in test:
             test_scores[p] = get_scores(places_location, p, predictor_iterator, estimators)
-        for p in group_place_dict[g]:
+        for p, _ in train_tuples:
             train_scores[p] = get_scores(places_location, p, predictor_iterator, estimators)
+
+        
     accurate = 0.0
     count = 0.0
     for place in test_scores.keys():
