@@ -131,7 +131,7 @@ def classify_other(training, test, use_priors = False):
     accurate += a
     count += c
     answers.extend(d)
-    a,c,d  = train_classifier_and_predict(sports_training, sports_test)
+    a,c,d  = train_classifier_and_predict(sports_training, sports_test, use_priors=True)
     accurate += a
     count += c
     answers.extend(d)
@@ -183,13 +183,11 @@ def perform_multi_level_classification(places_features, kde_as_priors = True):
         if kde_as_priors:
             priors = priors_with_db_scan(y_test, y_train)
             priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
-            #priors_top_level = None
         else:
-            #priors = priors_with_db_scan(y_test, y_train)
-            #priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
-            priors = None
-            priors_top_level = None
-            training_scores, test_scores = priors_with_db_scan(y_test, y_train, return_predictions=False)
+            priors = priors_with_db_scan(y_test, y_train)
+            priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
+            
+            training_scores, test_scores = priors_with_db_scan(y_test, y_train, return_predictions=False, attribute = 'gender')
             modified_training_set = []
             for y, x in training_dataset:
                 x_new = np.hstack((x, training_scores[y[0]]))
@@ -259,7 +257,7 @@ if __name__ == "__main__":
 
     
     
-    accuracy = perform_multi_level_classification(places_features, kde_as_priors=True)
+    accuracy = perform_multi_level_classification(places_features, kde_as_priors=False)
     print accuracy
     # with open("result_selection", "w") as f:
     #    writer = csv.writer(f)

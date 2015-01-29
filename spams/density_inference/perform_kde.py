@@ -69,6 +69,12 @@ def extract_places(places_location, label_id, restrict_to, attribute='label'):
         return []
     if attribute == 'label':
         lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(places_location.c.place_label_int==label_id).where(places_location.c.id.in_(restrict_to))
+    
+    else:
+        demographics = get_table('demographics', metadata)
+        joined_t = demographics.join(places_location, places_location.c.userid == demographics.c.userid)
+        lat_long_query = select([places_location.c.latitude, places_location.c.longitude]).where(demographics.c[attribute]==label_id).where(places_location.c.id.in_(restrict_to)).select_from(joined_t)
+
     results = connection.execute(lat_long_query).fetchall()
     return [(float(r[0]), float(r[1])) for r in results]
 
@@ -191,9 +197,19 @@ def priors_with_db_scan(test, train, input_func=extract_places, attribute = 'lab
     places_location = get_table("places_location", metadata)
     q = select([places_location.c.id]) 
     if attribute == 'label':
-        test_labels = [t[1] for t in test]
         train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for ((place, user), label) in train]
         predictor_iterator = range(1, 11)
+    else:
+        demographics = get_table("demographics", metadata)
+        demo_q = select([demographics.c[attribute]])
+        train_tuples = []
+        for (place, user), _ in train:
+            id = connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0]
+            demo_r =  connection.execute(demo_q.where(demographics.c.userid == user))
+            if demo_r.rowcount == 1:
+                train_tuples.append((id, demo_r.fetchall()[0][0]))
+        predictor_iterator = range(1, 3)
+
     test = [connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0] for ((place, user), _) in test]
     train_predictor_dict = defaultdict(list)
     for id, predictor in train_tuples:
@@ -226,13 +242,22 @@ def priors_with_db_scan(test, train, input_func=extract_places, attribute = 'lab
     for place in test_scores.keys():
         if attribute == 'label':
             true_predictor = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
+        else:
+            user = connection.execute(select([places_location.c.userid]).where(places_location.c.id==place)).fetchall()[0][0]
+            r = connection.execute(select([demographics.c[attribute]]).where(demographics.c.userid==user))
+            if r.rowcount == 1:
+                true_predictor = r.fetchall()[0][0]
+            else:
+                true_predictor = None
+        
         predicted_value, max_score =  max(test_scores[place], key = lambda x: x[1])
         if predicted_value == true_predictor:
             accurate += 1
             #print max(scores[place])
         count += 1    
     accuracy = accurate/count
-    print accuracy
+    if attribute is not 'label':
+        print accuracy
 
     if return_predictions:
         prior_labels = []
