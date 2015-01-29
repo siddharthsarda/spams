@@ -11,7 +11,7 @@ from sklearn.grid_search import GridSearchCV
 from sklearn.feature_selection import SelectFpr
 from sklearn.feature_selection import chi2, f_classif
 from sklearn.preprocessing import StandardScaler
-from spams.density_inference.perform_kde import priors_with_db_scan
+from spams.density_inference.perform_kde import priors_with_kde
 from collections import defaultdict
 from spams.mappings import LABEL_PLACE_MAPPING
 
@@ -78,7 +78,7 @@ def train_classifier_and_predict(training, test, use_priors=False, class_weight=
     y_train, x_train = zip(*training) 
     y_test, x_test = zip(*test)
     if use_priors:
-        priors = priors_with_db_scan(y_test, y_train)
+        priors = priors_with_kde(y_test, y_train)
     else:
         priors = None
     
@@ -100,7 +100,7 @@ def classify_other(training, test, use_priors = False):
     y_train, x_train = zip(*training)
     y_test, x_test = zip(*test) 
     if use_priors:
-        priors = priors_with_db_scan(y_test, y_train)
+        priors = priors_with_kde(y_test, y_train)
         priors_others = [OTHER_MAPPING[y] for y in priors]
     else:
         priors_others = None
@@ -157,6 +157,9 @@ def get_statistics(answers):
         each_label_accuracy[label][1] += 1
         if pred == label:
             each_label_accuracy[label][0] += 1
+    conf_items = sorted(confusion_matrix.items(), key=lambda x:x[0])        
+    for k, v in conf_items:
+        print k, [(key, (val*1.0)/sum(v.values())) for key, val in v.items()] 
     return each_label_accuracy, confusion_matrix
 
 
@@ -181,13 +184,13 @@ def perform_multi_level_classification(places_features, kde_as_priors = True):
         test_set = zip(y_test, X_test)
 
         if kde_as_priors:
-            priors = priors_with_db_scan(y_test, y_train)
+            priors = priors_with_kde(y_test, y_train)
             priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
         else:
-            priors = priors_with_db_scan(y_test, y_train)
+            priors = priors_with_kde(y_test, y_train)
             priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
             
-            training_scores, test_scores = priors_with_db_scan(y_test, y_train, return_predictions=False, attribute = 'gender')
+            training_scores, test_scores = priors_with_kde(y_test, y_train, return_predictions=False, attribute = 'gender')
             modified_training_set = []
             for y, x in training_dataset:
                 x_new = np.hstack((x, training_scores[y[0]]))
@@ -225,7 +228,7 @@ def perform_multi_level_classification(places_features, kde_as_priors = True):
         for a in [home_answers, work_answers, other_answers]:
             answers.extend(a)
     #gets confusion matrix and per label accuracy
-    print get_statistics(answers)
+    get_statistics(answers)
     print tla/len(kf) 
     #print accuracy_other/ len(kf)
     return overall_accuracy/ len(kf)
@@ -257,7 +260,7 @@ if __name__ == "__main__":
 
     
     
-    accuracy = perform_multi_level_classification(places_features, kde_as_priors=False)
+    accuracy = perform_multi_level_classification(places_features, kde_as_priors=True)
     print accuracy
     # with open("result_selection", "w") as f:
     #    writer = csv.writer(f)
