@@ -120,7 +120,6 @@ def classify_other(training, test, use_priors = False, add_features = False):
     else:
         priors_others = None
     if add_features:
-        x_test, x_train = extend_features(x_train, y_train, x_test, y_test, 'working')
         x_test, x_train = extend_features(x_train, y_train, x_test, y_test, 'gender')
 
     y_training_other = [OTHER_MAPPING[y[1]] for y in y_train]
@@ -204,10 +203,10 @@ def perform_multi_level_classification(places_features, kde_as_priors = True):
         if kde_as_priors:
             priors = priors_with_kde(y_test, y_train)
             priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
+
         else:
             priors = priors_with_kde(y_test, y_train)
             priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
-            X_test, X_train = extend_features(X_train, y_train, X_test, y_test, 'working')
             test_set = zip(y_test, X_test)
             training_dataset = zip(y_train, X_train)
 

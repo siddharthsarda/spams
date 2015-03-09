@@ -79,13 +79,20 @@ def extract_places(places_location, label_id, restrict_to, attribute='label'):
     return [(float(r[0]), float(r[1])) for r in results]
 
 
-def extract_visits(places_location, label_id, restrict_to):
+def extract_visits(places_location, label_id, restrict_to, attribute='label'):
     if len(restrict_to) == 0:
         return []
     visits_10min = get_table("visits_10min", metadata)
-    visits_with_places = places_location.join(visits_10min, onclause=and_(places_location.c.userid == visits_10min.c.userid, places_location.c.placeid == visits_10min.c.placeid)).alias("visits_with_places")
-    query = select([visits_with_places.c.places_location_latitude, visits_with_places.c.places_location_longitude]).where(visits_with_places.c.places_location_place_label_int == label_id).where(visits_with_places.c.places_location_id.in_(restrict_to))
+    visits_with_places = places_location.join(visits_10min, onclause=and_(places_location.c.userid == visits_10min.c.userid, places_location.c.placeid == visits_10min.c.placeid))
+    if attribute == 'label':
+        query = select([visits_with_places.c.places_location_latitude, visits_with_places.c.places_location_longitude]).where(visits_with_places.c.places_location_place_label_int == label_id).where(visits_with_places.c.places_location_id.in_(restrict_to))
+    else:
+        demographics = get_table('demographics', metadata)
+        joined_t = demographics.join(visits_with_places, visits_with_places.c.places_location_userid == demographics.c.userid)
+        query = select([visits_with_places.c.places_location_latitude, visits_with_places.c.places_location_longitude]).where(demographics.c[attribute]==label_id).where(places_location.c.id.in_(restrict_to)).select_from(joined_t)
+
     results = connection.execute(query).fetchall()
+    #print len(results)
     return [(float(r[0]), float(r[1])) for r in results]
 
 def split_test_and_train(places_location):
@@ -195,8 +202,7 @@ def get_scores(places_location, p, predictor_iterator, estimators):
 iterator_dict = {'label': range(1, 11), 'gender': range(1, 3), 'working': range(1, 9), 'age_group': range(1, 9)}
 
 def priors_with_kde(test, train, input_func=extract_places, attribute = 'label', return_predictions = True, method='dbscan'):
-    #test is originally a tuple of place, user, label
-    
+    #test is originally a tuple of place, user, label 
     places_location = get_table("places_location", metadata)
     q = select([places_location.c.id]) 
     
@@ -204,6 +210,7 @@ def priors_with_kde(test, train, input_func=extract_places, attribute = 'label',
     if attribute == 'label':
         train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for ((place, user), label) in train]
     else:
+        input_func = extract_visits
         demographics = get_table("demographics", metadata)
         demo_q = select([demographics.c[attribute]])
         train_tuples = []
@@ -226,7 +233,7 @@ def priors_with_kde(test, train, input_func=extract_places, attribute = 'label',
     count = len(test)
     train_scores = {}
 
-    if method == 'dbscan': 
+    if method == 'dbscan':
         place_group_dict, group_place_dict = perform_db_scan(places_location)
         groups = group_place_dict.keys()
         for g in groups:
