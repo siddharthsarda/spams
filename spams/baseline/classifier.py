@@ -204,11 +204,11 @@ def perform_multi_level_classification(places_features, kde_as_priors = True):
             priors = priors_with_kde(y_test, y_train)
             priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
 
-        else:
-            priors = priors_with_kde(y_test, y_train)
-            priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
-            test_set = zip(y_test, X_test)
-            training_dataset = zip(y_train, X_train)
+        #else:
+        #    priors = priors_with_kde(y_test, y_train)
+        #    priors_top_level = [TOP_LEVEL_MAPPING[y] for y in priors]
+        #    test_set = zip(y_test, X_test)
+        #    training_dataset = zip(y_train, X_train)
 
             
         X_train = [x for (y, x) in training_dataset]
