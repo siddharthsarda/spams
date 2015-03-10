@@ -1,3 +1,6 @@
+import os
+os.environ['MPLCONFIGDIR'] = "/local/.config/matplotlib"
+
 import sys
 import csv
 import numpy as np
@@ -21,7 +24,7 @@ def colors_map():
     colors = []
     cm = plt.get_cmap('gist_rainbow')
     for i in range(NUM_COLORS):
-        colors.append(cm(1.*i/NUM_COLORS))
+        colors.append(cm(10.*i/NUM_COLORS))
     return colors
 
 
@@ -35,8 +38,8 @@ if __name__ == "__main__":
             line = line.strip()
             restrict_to.append(line)
 
-    lat_long_query = select([places_location.c.latitude, places_location.c.longitude, places_location.c.place_label, places_location.c.id]).where(places_location.c.id.in_(restrict_to))
-    queries = select([func.min(places_location.c.latitude), func.max(places_location.c.latitude), func.min(places_location.c.longitude), func.max(places_location.c.longitude)]).where(places_location.c.id.in_(restrict_to))
+    lat_long_query = select([places_location.c.latitude, places_location.c.longitude, places_location.c.place_label, places_location.c.id]).where(places_location.c.place_label == 'Work')
+    queries = select([func.min(places_location.c.latitude), func.max(places_location.c.latitude), func.min(places_location.c.longitude), func.max(places_location.c.longitude)])
     min_lat, max_lat, min_long, max_long = connection.execute(queries).fetchall()[0]
     results = connection.execute(lat_long_query).fetchall()
     places_with_labels = [(r[2],(float(r[0]), float(r[1]))) for r in results]
@@ -55,12 +58,16 @@ if __name__ == "__main__":
         label_color_dict[label] = c_map[i]
 
     import folium
+    print folium.__file__
     
     map_osm = folium.Map(location=[46.5236, 6.53], zoom_start=15, width=1500, height=1000)
+    count = 0
     for key in labels_places_dict:
+        print label_color_dict[key]
         for val in labels_places_dict[key]:
-            print val
-            map_osm.circle_marker(val, popup_on=False, radius=10, fill_color=label_color_dict[key])# marker_color=label_color_dict[key])
+            count += 1
+            print count
+            map_osm.simple_marker(val, popup_on=False, marker_color=label_color_dict[key])
     map_osm.create_map(path= "overall.html")
 
     # plot_on_map(xy[indices])

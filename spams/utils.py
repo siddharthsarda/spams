@@ -14,9 +14,9 @@ def draw_barplot(values, x_ticks=None, xlabel="x", ylabel="y", title="plot", sav
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     plt.title(title)
-    autolabel(rects, values)
+    #autolabel(rects, values)
     fig = plt.gcf()
-    fig.set_size_inches((15, 12))
+    fig.set_size_inches((20, 16))
     if save_as:
         fig.savefig(save_as, dpi=100)
         plt.close(fig)

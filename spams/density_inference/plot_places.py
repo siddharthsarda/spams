@@ -1,3 +1,7 @@
+import os
+os.environ['MPLCONFIGDIR'] = "/local/.config/matplotlib"
+print(os.environ.get('MPLCONFIGDIR'))
+
 import sys
 import numpy as np
 from sklearn.neighbors import KernelDensity
@@ -7,6 +11,7 @@ from spams.db.utils import setup_database, get_table
 from mpl_toolkits.basemap import Basemap
 import matplotlib.pyplot as plt
 from spams.mappings import LABEL_PLACE_MAPPING
+
 
 if __name__ == "__main__":
     metadata, connection = setup_database()

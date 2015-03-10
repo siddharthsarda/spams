@@ -1,4 +1,7 @@
 import os
+os.environ['MPLCONFIGDIR'] = "/local/.config/matplotlib"
+print(os.environ.get('MPLCONFIGDIR'))
+
 from datetime import datetime
 import textwrap
 
@@ -34,7 +37,7 @@ def plot_start_time_hour():
                 hours[datetime.fromtimestamp(start_time[0]).hour] += 1
             place_name = LABEL_PLACE_MAPPING[place_label]
             filename = place_name + "_" + table + "_hours.png"
-            draw_barplot(hours, x_ticks=xrange(24), xlabel="Hour of Day", ylabel="Number of Checkins", title="%s start times in hours for table %s" % (place_name, table), save_as=os.path.join("/local", "thesis", "plots", filename))
+            draw_barplot(hours, x_ticks=xrange(24), xlabel="Hour of Day", ylabel="Number of Checkins", title="%s start times in hours" % (place_name), save_as=os.path.join("/local", "thesis", "plots", filename))
 
 
 def plot_start_time_day():
@@ -157,7 +160,7 @@ def plot_demographics():
     vals = [r[1] for r in result]
     x_ticks = [AGE_MAPPING[r[0]] for r in result]
     filename = "age.png"
-    draw_barplot(vals, x_ticks=x_ticks, xlabel="Age", ylabel="Count", title="Age Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
+    draw_barplot(vals, x_ticks=x_ticks, xlabel="", ylabel="", title="Age Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
 
     working_query = select([demographics.c.working, func.count(demographics.c.working)]).group_by(demographics.c.working)
     result = connection.execute(working_query).fetchall()
@@ -167,7 +170,7 @@ def plot_demographics():
     vals = [r[1] for r in result]
     x_ticks = [WORKING_MAPPING[r[0]] for r in result]
     filename = "working.png"
-    draw_barplot(vals, x_ticks=x_ticks, xlabel="Working", ylabel="Count", title="Working Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
+    draw_barplot(vals, x_ticks=[textwrap.fill(text,10) for text in x_ticks], xlabel="", ylabel="", title="Working Distribution", save_as=os.path.join("/local", "thesis", "plots", filename), width=0.35)
 
     bill_query = select([demographics.c.phone_bill, func.count(demographics.c.phone_bill)]).group_by(demographics.c.phone_bill)
     result = connection.execute(bill_query).fetchall()
@@ -180,4 +183,9 @@ def plot_demographics():
 
 
 if __name__ == "__main__":
-    plot_demographics()
+    import matplotlib
+    font = {'family' : 'normal',
+            'weight' : 'bold',
+            'size'   : 18}
+    matplotlib.rc('font', **font)
+    plot_start_time_hour()
