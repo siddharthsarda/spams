@@ -6,6 +6,7 @@ from sklearn.neighbors import KernelDensity
 from sqlalchemy.sql import select, and_
 from sklearn.cluster import DBSCAN
 from sqlalchemy import func
+from sqlalchemy import extract
 from spams.db.utils import setup_database, get_table
 # from mpl_toolkits.basemap import Basemap
 # import matplotlib.pyplot as plt
@@ -83,9 +84,13 @@ def extract_visits(places_location, label_id, restrict_to, attribute='label'):
     if len(restrict_to) == 0:
         return []
     visits_10min = get_table("visits_10min", metadata)
+    #q = visits_10min.select([visits_10min.c.time_start]).where(extract('hour', visits_10min.c.time_start) > 10)
+    #connection.execute(q)
     visits_with_places = places_location.join(visits_10min, onclause=and_(places_location.c.userid == visits_10min.c.userid, places_location.c.placeid == visits_10min.c.placeid))
     if attribute == 'label':
         query = select([visits_with_places.c.places_location_latitude, visits_with_places.c.places_location_longitude]).where(visits_with_places.c.places_location_place_label_int == label_id).where(visits_with_places.c.places_location_id.in_(restrict_to))
+    elif attribute == 'time':
+        query = select([places_location.c.latitude, places_location.c.longitude]).where(and_(extract('hour', func.to_timestamp(visits_10min.c.time_start)) >= (2 * label_id), extract('hour', func.to_timestamp(visits_10min.c.time_end)) <= (2 *label_id + 1))).where(places_location.c.id.in_(restrict_to)).select_from(visits_with_places)
     else:
         demographics = get_table('demographics', metadata)
         joined_t = demographics.join(visits_with_places, visits_with_places.c.places_location_userid == demographics.c.userid)
@@ -199,7 +204,7 @@ def get_scores(places_location, p, predictor_iterator, estimators):
 # train is place ids with label
 # test is just place ids
 
-iterator_dict = {'label': range(1, 11), 'gender': range(1, 3), 'working': range(1, 9), 'age_group': range(1, 9)}
+iterator_dict = {'label': range(1, 11), 'gender': range(1, 3), 'working': range(1, 9), 'age_group': range(1, 9), 'time': range(0, 12)}
 
 def priors_with_kde(test, train, input_func=extract_places, attribute = 'label', return_predictions = True, method='dbscan'):
     #test is originally a tuple of place, user, label 
@@ -209,6 +214,13 @@ def priors_with_kde(test, train, input_func=extract_places, attribute = 'label',
     predictor_iterator = iterator_dict[attribute]
     if attribute == 'label':
         train_tuples = [(connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0], label) for ((place, user), label) in train]
+    elif attribute == 'time':
+        train_tuples = []
+        input_func = extract_visits
+        for (place, user), _ in train:
+              id = connection.execute(q.where(and_(places_location.c.placeid == place, places_location.c.userid == user))).fetchall()[0][0]
+              for i in xrange(0,12):
+                  train_tuples.append((id, i))
     else:
         input_func = extract_visits
         demographics = get_table("demographics", metadata)
@@ -271,25 +283,25 @@ def priors_with_kde(test, train, input_func=extract_places, attribute = 'label',
         
     accurate = 0.0
     count = 0.0
-    for place in test_scores.keys():
-        if attribute == 'label':
-            true_predictor = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
-        else:
-            user = connection.execute(select([places_location.c.userid]).where(places_location.c.id==place)).fetchall()[0][0]
-            r = connection.execute(select([demographics.c[attribute]]).where(demographics.c.userid==user))
-            if r.rowcount == 1:
-                true_predictor = r.fetchall()[0][0]
-            else:
-                true_predictor = None
-        
-        predicted_value, max_score =  max(test_scores[place], key = lambda x: x[1])
-        if predicted_value == true_predictor:
-            accurate += 1
-            #print max(scores[place])
-        count += 1    
-    accuracy = accurate/count
-    if attribute is not 'label':
-        print accuracy
+    #for place in test_scores.keys():
+    #    if attribute == 'label':
+    #        true_predictor = connection.execute(select([places_location.c.place_label_int]).where(places_location.c.id==place)).fetchall()[0][0]
+    #    else:
+    #        user = connection.execute(select([places_location.c.userid]).where(places_location.c.id==place)).fetchall()[0][0]
+    #        r = connection.execute(select([demographics.c[attribute]]).where(demographics.c.userid==user))
+    #        if r.rowcount == 1:
+    #            true_predictor = r.fetchall()[0][0]
+    #        else:
+    #            true_predictor = None
+    #    
+    #    predicted_value, max_score =  max(test_scores[place], key = lambda x: x[1])
+    #    if predicted_value == true_predictor:
+    #        accurate += 1
+    #        #print max(scores[place])
+    #    count += 1    
+    #accuracy = accurate/count
+    #if attribute is not 'label':
+    #    print accuracy
 
     if return_predictions:
         prior_labels = []
@@ -309,10 +321,20 @@ if __name__ == "__main__":
     places_location = get_table("places_location", metadata)
     acc = 0.0
     nrr = 0.0
-    for i in xrange(1000):
+    for i in xrange(1000000):
         test, train = split_test_and_train(places_location)
+        a = 0.0
+        n = 0.0
+        for key in test:
+            arr = range(1, 11)
+            import random
+            random.shuffle(arr)
+            a += arr[0] == key
+            n += 1.0/(arr.index(key) + 1)
+
         #a, n, counter = perform_kde_places(places_location, test, train)
-        a, n, counter = kde_with_db_scan(places_location, test, train)
+        #a, n, counter = kde_with_db_scan(places_location, test, train)
+        counter = len(test)
         acc += a/counter
         nrr += n/counter
-    print acc/1000, nrr/1000
+    print acc/1000000, nrr/1000000

@@ -36,4 +36,5 @@ if __name__ == "__main__":
         to_write = sorted(to_write, key=lambda t: t[3])
         for row in to_write:
             writer.writerow(row)
+        #break    
     output_file.close()

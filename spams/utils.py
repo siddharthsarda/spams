@@ -1,5 +1,14 @@
+import os
+os.environ['MPLCONFIGDIR'] = "/local/.config/matplotlib"
+print(os.environ.get('MPLCONFIGDIR'))
+
 import matplotlib.pyplot as plt
+import matplotlib
 from pylab import xticks
+font = {'family' : 'normal',
+        'weight' : 'bold',
+        'size'   : 24}
+matplotlib.rc('font', **font)
 
 
 def autolabel(rects, name):
@@ -11,9 +20,9 @@ def autolabel(rects, name):
 def draw_barplot(values, x_ticks=None, xlabel="x", ylabel="y", title="plot", save_as=None, **kwargs):
     rects = plt.bar(range(len(values)), values, align='center', **kwargs)
     xticks(range(len(values)), x_ticks)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(title)
+    plt.xlabel(xlabel, fontsize = 30, fontweight='bold')
+    plt.ylabel(ylabel, fontsize = 30, fontweight='bold')
+    plt.title(title, fontweight='bold', fontsize=36)
     #autolabel(rects, values)
     fig = plt.gcf()
     fig.set_size_inches((20, 16))
